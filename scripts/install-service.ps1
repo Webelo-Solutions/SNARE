@@ -3,11 +3,16 @@
   Installs SNARE as a Windows service using NSSM, running the production
   build (`next start`) and pointed at the current user's existing
   %APPDATA%\snare data directory (config/DB/screenshots) via SNARE_DATA_DIR,
-  so the service picks up right where interactive testing left off.
+  so the service picks up right where interactive testing left off. Also
+  sets PLAYWRIGHT_BROWSERS_PATH=0 so screenshot capture finds Chromium
+  under node_modules rather than the service account's own profile cache.
 
 .NOTES
   Must be run from an elevated (Administrator) PowerShell.
   Run `npm run build` in the project first if you haven't already.
+  Also run `PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium`
+  first if you haven't - screenshot capture needs it downloaded to that
+  project-local location, not just the interactive user's own profile.
 #>
 
 #Requires -RunAsAdministrator
@@ -76,7 +81,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & $nssm set $ServiceName AppDirectory $ProjectDir
-& $nssm set $ServiceName AppEnvironmentExtra "SNARE_DATA_DIR=$DataDir" "NODE_ENV=production"
+# PLAYWRIGHT_BROWSERS_PATH=0 keeps Chromium under node_modules (project-
+# local) instead of the running account's own profile cache - the service
+# runs as Local System by default, whose profile never has the browser
+# `npm install`/`npx playwright install` downloaded to the interactive
+# user's profile. Run `PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install
+# chromium` once before installing the service so it's actually there.
+& $nssm set $ServiceName AppEnvironmentExtra "SNARE_DATA_DIR=$DataDir" "NODE_ENV=production" "PLAYWRIGHT_BROWSERS_PATH=0"
 & $nssm set $ServiceName AppStdout (Join-Path $LogDir "stdout.log")
 & $nssm set $ServiceName AppStderr (Join-Path $LogDir "stderr.log")
 & $nssm set $ServiceName AppRotateFiles 1
