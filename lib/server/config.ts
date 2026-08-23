@@ -23,6 +23,7 @@ const SourceConfigSchema = z.object({
 const ApiKeysSchema = z.object({
   securitytrails: z.string().default(""),
   virustotal: z.string().default(""),
+  urlscan: z.string().default(""),
 });
 
 const SenderProfileSchema = z.object({

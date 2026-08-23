@@ -34,28 +34,16 @@ class SecurityTrailsClient implements PassiveDnsClient {
   }
 }
 
-class VirusTotalClient implements PassiveDnsClient {
-  private static readonly BASE = "https://www.virustotal.com/api/v3";
-  constructor(private apiKey: string) {}
-
-  async similarDomains(domain: string): Promise<PassiveDnsEntry[]> {
-    try {
-      const resp = await fetch(`${VirusTotalClient.BASE}/domains/${encodeURIComponent(domain)}/related`, {
-        headers: { "x-apikey": this.apiKey },
-        signal: AbortSignal.timeout(15_000),
-      });
-      const data = await resp.json();
-      const items: Array<{ id: string; type: string }> = data.data ?? [];
-      return items.filter((i) => i.type === "domain").map((i) => ({ domain: i.id, raw: i }));
-    } catch {
-      return [];
-    }
-  }
-}
+// VirusTotal previously had a client here calling /domains/{domain}/related
+// as a "similar domains" discovery source — that endpoint doesn't actually
+// exist in VT's v3 API (there's no "related" relationship type for
+// domains), so it would have silently returned nothing every time. VT's
+// real strength is domain reputation, not fuzzy name-based discovery — see
+// reputation.ts, which uses the correct, well-documented /domains/{domain}
+// endpoint as a scoring/enrichment signal on domains already found here.
 
 export function getClients(apiKeys: ApiKeys): PassiveDnsClient[] {
   const clients: PassiveDnsClient[] = [];
   if (apiKeys.securitytrails) clients.push(new SecurityTrailsClient(apiKeys.securitytrails));
-  if (apiKeys.virustotal) clients.push(new VirusTotalClient(apiKeys.virustotal));
   return clients;
 }

@@ -33,6 +33,10 @@ const MEDIUM_RISK_TLDS = new Set([
  * Medium-risk TLD                   5
  * CT Logs source (cert issued)      5
  * Brand name embedded (combosquat) 10
+ * VirusTotal: malicious verdicts   25
+ * VirusTotal: suspicious verdicts  10
+ * urlscan.io: malicious verdict    20
+ * urlscan.io: auto-flagged suspicious (no verdict) 8
  * ──────────────────────────────────────────
  * Cap                             100
  */
@@ -85,6 +89,29 @@ export function score(result: DomainResult): number {
     ) {
       pts += 10;
     }
+  }
+
+  // Third-party reputation corroboration — independent of our own
+  // structural/registration signals, so it's additive rather than
+  // overlapping with them.
+  if (result.vtMaliciousCount !== null && result.vtMaliciousCount >= 1) {
+    pts += 25;
+  } else if (result.vtSuspiciousCount !== null && result.vtSuspiciousCount >= 1) {
+    pts += 10;
+  }
+
+  if (result.urlscanMalicious === true) {
+    pts += 20;
+  } else if (
+    result.urlscanScanned &&
+    result.urlscanSource === "certstream-suspicious" &&
+    result.urlscanMalicious === null
+  ) {
+    // No verdict available (needs an urlscan API key), but urlscan's own
+    // automated system independently flagged this domain as suspicious
+    // enough to auto-scan from a newly-issued certificate — a real,
+    // if weaker, corroborating signal on its own.
+    pts += 8;
   }
 
   return Math.min(pts, 100);

@@ -15,6 +15,7 @@ import { emitAppAlert } from "./alertStream";
 import { captureBatch } from "./screenshot";
 import { classifyPermutation } from "./classifyPermutation";
 import { detectParking } from "./parkingDetector";
+import { getVirusTotalReputation, getUrlscanSignal } from "./reputation";
 
 // Minimum structure-only score for an unresolved domain to be surfaced as an
 // available defensive-registration candidate. Edit distance 2 = 25 pts.
@@ -38,6 +39,12 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     isCustomStubMatch: false,
     technique: "",
     parkedService: null,
+    vtMaliciousCount: null,
+    vtSuspiciousCount: null,
+    urlscanScanned: false,
+    urlscanSource: null,
+    urlscanUrl: null,
+    urlscanMalicious: null,
   };
 }
 
@@ -118,6 +125,49 @@ class ScanRun {
     }
   }
 
+  /** Third-party reputation corroboration for a domain that actually
+   * resolved — VirusTotal self-gates on having an API key configured;
+   * urlscan's search runs regardless (its unauthenticated tier is real and
+   * useful on its own — see reputation.ts), a key only unlocks its verdict. */
+  private async checkReputation(
+    domain: string,
+    resolved: boolean
+  ): Promise<
+    Pick<
+      DomainResult,
+      | "vtMaliciousCount"
+      | "vtSuspiciousCount"
+      | "urlscanScanned"
+      | "urlscanSource"
+      | "urlscanUrl"
+      | "urlscanMalicious"
+    >
+  > {
+    const empty = {
+      vtMaliciousCount: null,
+      vtSuspiciousCount: null,
+      urlscanScanned: false,
+      urlscanSource: null,
+      urlscanUrl: null,
+      urlscanMalicious: null,
+    } as const;
+    if (!resolved) return empty;
+
+    const [vt, urlscan] = await Promise.all([
+      getVirusTotalReputation(domain, this.config.apiKeys.virustotal),
+      getUrlscanSignal(domain, this.config.apiKeys.urlscan),
+    ]);
+
+    return {
+      vtMaliciousCount: vt?.maliciousCount ?? null,
+      vtSuspiciousCount: vt?.suspiciousCount ?? null,
+      urlscanScanned: urlscan.scanned,
+      urlscanSource: urlscan.source,
+      urlscanUrl: urlscan.scanUrl,
+      urlscanMalicious: urlscan.malicious,
+    };
+  }
+
   private async enrichWhois(domain: string): Promise<WhoisEnrichment> {
     if (!this.config.sources.whoisNrd) {
       return { registrar: null, creationDate: null, abuseEmail: "" };
@@ -167,6 +217,7 @@ class ScanRun {
       result.isCustomStubMatch = stubMatches.has(domain);
       result.technique = this.technique(domain, target);
       result.parkedService = await this.checkParking(domain, result.hasWeb);
+      Object.assign(result, await this.checkReputation(domain, hasHit));
       this.emit(result);
       this.progress(i + 1, entries.length, `CT Logs — ${domain}`);
     }
@@ -222,6 +273,7 @@ class ScanRun {
         result.isCustomStubMatch = allStubDomains.has(domain);
         result.technique = this.technique(domain, target);
         result.parkedService = await this.checkParking(domain, result.hasWeb);
+        Object.assign(result, await this.checkReputation(domain, true));
         this.emit(result);
       },
       this.signal
@@ -251,6 +303,7 @@ class ScanRun {
         result.isCustomStubMatch = stubMatches.has(domain);
         result.technique = this.technique(domain, target);
         result.parkedService = await this.checkParking(domain, result.hasWeb);
+        Object.assign(result, await this.checkReputation(domain, dnsInfo.ips.length > 0));
         this.emit(result);
       }
     }

@@ -30,6 +30,12 @@ CREATE TABLE IF NOT EXISTS results (
     screenshot_path  TEXT    DEFAULT '',
     technique        TEXT    DEFAULT '',
     parked_service   TEXT,
+    vt_malicious_count   INTEGER,
+    vt_suspicious_count  INTEGER,
+    urlscan_scanned      INTEGER DEFAULT 0,
+    urlscan_source       TEXT,
+    urlscan_url          TEXT,
+    urlscan_malicious    INTEGER,
     first_discovered TEXT    NOT NULL,
     last_seen        TEXT    NOT NULL,
     UNIQUE(domain, target)
@@ -55,6 +61,12 @@ interface ResultRow {
   screenshot_path: string;
   technique: string | null;
   parked_service: string | null;
+  vt_malicious_count: number | null;
+  vt_suspicious_count: number | null;
+  urlscan_scanned: number;
+  urlscan_source: string | null;
+  urlscan_url: string | null;
+  urlscan_malicious: number | null;
   first_discovered: string;
   last_seen: string;
 }
@@ -104,6 +116,12 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     screenshotPath,
     technique: row.technique || "",
     parkedService: row.parked_service || null,
+    vtMaliciousCount: row.vt_malicious_count,
+    vtSuspiciousCount: row.vt_suspicious_count,
+    urlscanScanned: Boolean(row.urlscan_scanned),
+    urlscanSource: row.urlscan_source,
+    urlscanUrl: row.urlscan_url,
+    urlscanMalicious: row.urlscan_malicious === null ? null : Boolean(row.urlscan_malicious),
     isNew: false,
     isAvailable,
     // Not persisted — derived from the *current* custom stub config at scan
@@ -151,6 +169,24 @@ class SnareDatabase {
     if (!hasColumn("parked_service")) {
       this.conn.exec("ALTER TABLE results ADD COLUMN parked_service TEXT");
     }
+    if (!hasColumn("vt_malicious_count")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN vt_malicious_count INTEGER");
+    }
+    if (!hasColumn("vt_suspicious_count")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN vt_suspicious_count INTEGER");
+    }
+    if (!hasColumn("urlscan_scanned")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN urlscan_scanned INTEGER DEFAULT 0");
+    }
+    if (!hasColumn("urlscan_source")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN urlscan_source TEXT");
+    }
+    if (!hasColumn("urlscan_url")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN urlscan_url TEXT");
+    }
+    if (!hasColumn("urlscan_malicious")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN urlscan_malicious INTEGER");
+    }
   }
 
   beginScan(targets: string[]): number {
@@ -179,8 +215,11 @@ class SnareDatabase {
           `INSERT INTO results
             (scan_id, domain, target, source, score, first_seen,
              registrar, ips, mx_records, has_web, abuse_contact,
-             screenshot_path, technique, parked_service, first_discovered, last_seen)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             screenshot_path, technique, parked_service,
+             vt_malicious_count, vt_suspicious_count,
+             urlscan_scanned, urlscan_source, urlscan_url, urlscan_malicious,
+             first_discovered, last_seen)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           scanId,
@@ -197,6 +236,12 @@ class SnareDatabase {
           result.screenshotPath,
           result.technique,
           result.parkedService,
+          result.vtMaliciousCount,
+          result.vtSuspiciousCount,
+          result.urlscanScanned ? 1 : 0,
+          result.urlscanSource,
+          result.urlscanUrl,
+          result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
           ts,
           ts
         );
@@ -211,7 +256,10 @@ class SnareDatabase {
           .prepare(
             `UPDATE results
              SET scan_id=?, score=?, registrar=?, ips=?, mx_records=?,
-                 has_web=?, abuse_contact=?, technique=?, parked_service=?, last_seen=?
+                 has_web=?, abuse_contact=?, technique=?, parked_service=?,
+                 vt_malicious_count=?, vt_suspicious_count=?,
+                 urlscan_scanned=?, urlscan_source=?, urlscan_url=?, urlscan_malicious=?,
+                 last_seen=?
              WHERE domain=? AND target=?`
           )
           .run(
@@ -224,6 +272,12 @@ class SnareDatabase {
             result.abuseContact,
             result.technique,
             result.parkedService,
+            result.vtMaliciousCount,
+            result.vtSuspiciousCount,
+            result.urlscanScanned ? 1 : 0,
+            result.urlscanSource,
+            result.urlscanUrl,
+            result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
             ts,
             result.domain,
             result.target

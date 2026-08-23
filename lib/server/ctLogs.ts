@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchWithRetry } from "./retry";
 
 export interface CtLogEntry {
   domain: string;
@@ -16,7 +17,13 @@ export async function fetchCtLogs(domain: string, signal?: AbortSignal): Promise
   const url = `https://crt.sh/?q=%.${encodeURIComponent(domain)}&output=json`;
   let entries: CrtShEntry[];
   try {
-    const resp = await fetch(url, { signal, headers: { Accept: "application/json" } });
+    // crt.sh has been observed returning transient 502s — retry with
+    // backoff rather than treating that identically to "no results".
+    const resp = await fetchWithRetry(
+      url,
+      { headers: { Accept: "application/json" } },
+      { signal, attempts: 3, baseDelayMs: 1_000, timeoutMs: 20_000 }
+    );
     if (!resp.ok) return [];
     entries = await resp.json();
   } catch {

@@ -15,6 +15,11 @@ const HEADERS = [
   "Abuse Contact",
   "Is Available",
   "Parked Service",
+  "VT Malicious",
+  "VT Suspicious",
+  "urlscan Scanned",
+  "urlscan Verdict",
+  "urlscan URL",
 ];
 
 function csvEscape(value: string): string {
@@ -53,6 +58,11 @@ export async function GET(
         r.abuseContact,
         r.isAvailable ? "Yes" : "No",
         r.parkedService ?? "",
+        r.vtMaliciousCount === null ? "" : String(r.vtMaliciousCount),
+        r.vtSuspiciousCount === null ? "" : String(r.vtSuspiciousCount),
+        r.urlscanScanned ? "Yes" : "No",
+        r.urlscanMalicious === null ? "" : r.urlscanMalicious ? "Malicious" : "Clean",
+        r.urlscanUrl ?? "",
       ]
         .map(csvEscape)
         .join(",")

@@ -36,6 +36,17 @@ export interface DomainResult {
    * separate axis from `score` — a parked domain can still structurally
    * resemble the target closely, it just isn't live phishing infra yet. */
   parkedService: string | null;
+  /** VirusTotal AV-vendor detection counts for this domain — null when no
+   * VirusTotal API key is configured or the lookup failed/wasn't run. */
+  vtMaliciousCount: number | null;
+  vtSuspiciousCount: number | null;
+  /** Whether urlscan.io has an independent scan of this exact domain on
+   * file — via their public search API, no key required — and, if an
+   * urlscan API key is configured, that scan's malicious verdict. */
+  urlscanScanned: boolean;
+  urlscanSource: string | null;
+  urlscanUrl: string | null;
+  urlscanMalicious: boolean | null;
   raw?: unknown;
 }
 
@@ -61,6 +72,9 @@ export interface SourceConfig {
 export interface ApiKeys {
   securitytrails: string;
   virustotal: string;
+  /** Optional — urlscan.io's search API works unauthenticated; a key just
+   * raises rate limits and unlocks the authenticated malicious verdict. */
+  urlscan: string;
 }
 
 export interface SenderProfile {

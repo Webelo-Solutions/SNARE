@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { createColumnHelper } from "@tanstack/react-table";
 import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +72,66 @@ export const columns = [
     header: "Score",
     cell: (info) => <ScoreBadge score={info.getValue()} />,
     sortDescFirst: true,
+  }),
+  columnHelper.display({
+    id: "reputation",
+    header: "Reputation",
+    cell: (info) => {
+      const r = info.row.original;
+      const hasVt = r.vtMaliciousCount !== null;
+      const parts: ReactNode[] = [];
+
+      if (hasVt) {
+        const malicious = r.vtMaliciousCount ?? 0;
+        parts.push(
+          <span
+            key="vt"
+            className={malicious > 0 ? "text-risk-critical font-medium" : "text-text-dim"}
+            title={`VirusTotal: ${malicious} malicious, ${r.vtSuspiciousCount ?? 0} suspicious`}
+          >
+            VT {malicious > 0 ? `${malicious} malicious` : "clean"}
+          </span>
+        );
+      }
+
+      if (r.urlscanScanned) {
+        const tone =
+          r.urlscanMalicious === true
+            ? "text-risk-critical font-medium"
+            : r.urlscanMalicious === false
+              ? "text-risk-green"
+              : "text-text-dim";
+        const label =
+          r.urlscanMalicious === true
+            ? "malicious"
+            : r.urlscanMalicious === false
+              ? "clean"
+              : r.urlscanSource === "certstream-suspicious"
+                ? "auto-flagged"
+                : "scanned";
+        parts.push(
+          r.urlscanUrl ? (
+            <a
+              key="urlscan"
+              href={r.urlscanUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`underline decoration-dotted ${tone}`}
+              title="View on urlscan.io"
+            >
+              urlscan: {label}
+            </a>
+          ) : (
+            <span key="urlscan" className={tone}>
+              urlscan: {label}
+            </span>
+          )
+        );
+      }
+
+      if (parts.length === 0) return <span className="text-text-dim">—</span>;
+      return <div className="flex flex-col text-[13px] leading-tight">{parts}</div>;
+    },
   }),
   columnHelper.accessor("registrar", {
     header: "Registrar",
