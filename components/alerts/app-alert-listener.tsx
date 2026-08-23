@@ -2,22 +2,65 @@
 
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { scoreLabel } from "@/lib/scoreLabel";
+import { scoreLabel, type ScoreLabel } from "@/lib/scoreLabel";
 import type { AppAlertEvent, DomainResult } from "@/lib/types";
 
-function notifyOne(result: DomainResult) {
-  const label = scoreLabel(result.score);
-  const tag = result.isCustomStubMatch ? "Watched keyword match" : `${label} risk`;
+const TIER_ORDER: ScoreLabel[] = ["Critical", "High", "Medium", "Low"];
 
-  toast.warning(`${result.domain}`, {
-    description: `${tag} · score ${result.score} · target ${result.target}`,
-    duration: 15_000,
-  });
+/**
+ * Builds one consolidated summary for a whole batch of alert-worthy results
+ * from a single scan — a scan that finds 10 domains at once should read as
+ * one digest, not fire 10 separate toasts/notifications.
+ */
+function buildDigest(results: DomainResult[]): { title: string; description: string } {
+  const tierCounts: Record<ScoreLabel, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+  let watchedCount = 0;
+  for (const r of results) {
+    tierCounts[scoreLabel(r.score)]++;
+    if (r.isCustomStubMatch) watchedCount++;
+  }
+  const tierParts = TIER_ORDER.filter((t) => tierCounts[t] > 0).map((t) => `${tierCounts[t]} ${t}`);
+  if (watchedCount > 0) tierParts.push(`${watchedCount} watched`);
 
-  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-    new Notification("SNARE — new domain detected", {
-      body: `${result.domain} (${tag}, score ${result.score})`,
-      tag: result.domain, // collapses repeats for the same domain instead of stacking
+  const targets = [...new Set(results.map((r) => r.target))];
+  const targetLabel = targets.length === 1 ? targets[0] : `${targets.length} targets`;
+
+  if (results.length === 1) {
+    const r = results[0];
+    return {
+      title: r.domain,
+      description: `${scoreLabel(r.score)} risk · score ${r.score} · target ${r.target}`,
+    };
+  }
+
+  const sorted = [...results].sort((a, b) => b.score - a.score);
+  const topNames = sorted.slice(0, 3).map((r) => r.domain);
+  const remaining = results.length - topNames.length;
+
+  return {
+    title: `${results.length} new domains flagged — ${targetLabel}`,
+    description:
+      `${tierParts.join(" · ")} — ${topNames.join(", ")}` +
+      (remaining > 0 ? ` +${remaining} more` : ""),
+  };
+}
+
+function notifyDigest(results: DomainResult[]) {
+  if (results.length === 0) return;
+  const { title, description } = buildDigest(results);
+
+  toast.warning(title, { description, duration: 20_000 });
+
+  if (
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    Notification.permission === "granted"
+  ) {
+    new Notification("SNARE — new domains detected", {
+      body: `${title}\n${description}`,
+      // One tag per digest (not per domain) so a second scan's digest
+      // replaces the first rather than stacking a pile of toasts.
+      tag: "snare-alert-digest",
     });
   }
 }
@@ -25,7 +68,8 @@ function notifyOne(result: DomainResult) {
 /**
  * Mounted once at the app root. Subscribes to the global (not scan-scoped)
  * alert stream for the lifetime of the tab, so a scheduled scan's findings
- * surface as a toast / desktop notification no matter which page is open.
+ * surface as a single digest toast / desktop notification no matter which
+ * page is open.
  */
 export function AppAlertListener() {
   useEffect(() => {
@@ -34,7 +78,7 @@ export function AppAlertListener() {
     source.onmessage = (ev) => {
       const event = JSON.parse(ev.data) as AppAlertEvent;
       if (event.type === "alert") {
-        for (const result of event.results) notifyOne(result);
+        notifyDigest(event.results);
       }
     };
 

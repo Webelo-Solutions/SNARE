@@ -2,7 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import Database from "better-sqlite3";
 import { DB_PATH, ensureDataDirs } from "./paths";
-import type { DomainResult, MatchSource, ScanSummary } from "@/lib/types";
+import type { AggregateStats, DomainResult, MatchSource, ScanSummary } from "@/lib/types";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS scans (
@@ -293,6 +293,87 @@ class SnareDatabase {
       .prepare("SELECT * FROM results WHERE scan_id=? ORDER BY score DESC")
       .all(scanId) as ResultRow[];
     return rows.map(rowToDomainResult);
+  }
+
+  /**
+   * Cross-scan aggregate stats for the dashboard. Unlike getResultsForScan,
+   * this queries the whole `results` table — which is already the
+   * deduplicated "every domain ever discovered" view (UNIQUE(domain,
+   * target), insert-or-update), so no de-duping needed here.
+   */
+  getAggregateStats(): AggregateStats {
+    const totalDomains = (
+      this.conn.prepare("SELECT COUNT(*) as c FROM results").get() as { c: number }
+    ).c;
+
+    const byRiskTier = this.conn
+      .prepare(
+        `SELECT
+           CASE
+             WHEN score >= 70 THEN 'Critical'
+             WHEN score >= 50 THEN 'High'
+             WHEN score >= 30 THEN 'Medium'
+             ELSE 'Low'
+           END as tier,
+           COUNT(*) as count
+         FROM results
+         GROUP BY tier`
+      )
+      .all() as Array<{ tier: string; count: number }>;
+
+    const byTechnique = this.conn
+      .prepare(
+        `SELECT technique, COUNT(*) as count FROM results
+         WHERE technique != '' AND technique IS NOT NULL
+         GROUP BY technique ORDER BY count DESC`
+      )
+      .all() as Array<{ technique: string; count: number }>;
+
+    const byTarget = this.conn
+      .prepare("SELECT target, COUNT(*) as count FROM results GROUP BY target ORDER BY count DESC")
+      .all() as Array<{ target: string; count: number }>;
+
+    const parkedCount = (
+      this.conn
+        .prepare(
+          "SELECT COUNT(*) as c FROM results WHERE parked_service IS NOT NULL AND parked_service != ''"
+        )
+        .get() as { c: number }
+    ).c;
+
+    const availableCount = (
+      this.conn
+        .prepare(
+          "SELECT COUNT(*) as c FROM results WHERE source='DNS Permutation' AND (ips='[]' OR ips IS NULL)"
+        )
+        .get() as { c: number }
+    ).c;
+
+    const newPerDay = this.conn
+      .prepare(
+        `SELECT date(first_discovered) as day, COUNT(*) as count FROM results
+         WHERE first_discovered >= date('now', '-30 days')
+         GROUP BY day ORDER BY day`
+      )
+      .all() as Array<{ day: string; count: number }>;
+
+    const totalScans = (
+      this.conn.prepare("SELECT COUNT(*) as c FROM scans").get() as { c: number }
+    ).c;
+
+    const lastScan = this.getLatestCompletedScan();
+
+    return {
+      totalDomains,
+      byRiskTier,
+      byTechnique,
+      byTarget,
+      parkedCount,
+      availableCount,
+      newPerDay,
+      totalScans,
+      lastScanAt: lastScan?.completedAt ?? null,
+    };
   }
 
   getLatestCompletedScan(): ScanSummary | null {

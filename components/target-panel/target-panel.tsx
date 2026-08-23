@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X, Play, Square, Settings, History } from "lucide-react";
+import { Plus, X, Play, Square, Settings, History, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +56,11 @@ export function TargetPanel({ scanning, activeScanId, onScanStarted }: TargetPan
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h1 className="text-sm font-bold tracking-wide text-foreground">SNARE</h1>
         <div className="flex gap-1">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="icon" className="size-7" title="Dashboard">
+              <LayoutDashboard className="size-4" />
+            </Button>
+          </Link>
           <Link href="/history">
             <Button variant="ghost" size="icon" className="size-7" title="Scan History">
               <History className="size-4" />

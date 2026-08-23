@@ -127,6 +127,19 @@ export interface ScanSummary {
   newFound: number;
 }
 
+/** Cross-scan aggregate stats for the dashboard — see db.ts getAggregateStats(). */
+export interface AggregateStats {
+  totalDomains: number;
+  byRiskTier: Array<{ tier: string; count: number }>;
+  byTechnique: Array<{ technique: string; count: number }>;
+  byTarget: Array<{ target: string; count: number }>;
+  parkedCount: number;
+  availableCount: number;
+  newPerDay: Array<{ day: string; count: number }>;
+  totalScans: number;
+  lastScanAt: string | null;
+}
+
 export interface ScanProgressEvent {
   type: "progress";
   current: number;

@@ -49,6 +49,7 @@
 
   /* SNARE Catppuccin-Mocha risk palette — used by score badges & status
      indicators, independent of the shadcn semantic tokens above. */
+  --color-surface: var(--card);
   --color-surface2: var(--surface2);
   --color-text-dim: var(--text-dim);
   --color-risk-critical: var(--risk-critical);
