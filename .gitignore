@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# NSSM Windows service runtime logs (see scripts/install-service.ps1)
+/service-logs/
+
 # production
 /build
 

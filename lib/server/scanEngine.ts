@@ -32,6 +32,7 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     screenshotPath: "",
     isNew: false,
     isAvailable: false,
+    isCustomStubMatch: false,
   };
 }
 
@@ -88,6 +89,17 @@ class ScanRun {
     emitScanEvent(this.scanId, { type: "progress", current, total, label });
   }
 
+  /** Union of every custom-stub-derived variant shape for this target —
+   * used to tag results so alerting can bypass the score threshold for
+   * explicitly user-requested keyword matches. */
+  private stubMatchSet(target: string): Set<string> {
+    const stubs = this.config.customStubs;
+    return new Set([
+      ...permutations.customStubVariants(target, stubs, stubs),
+      ...permutations.reverseSubdomainStubVariants(target, stubs),
+    ]);
+  }
+
   private async enrichWhois(domain: string): Promise<WhoisEnrichment> {
     if (!this.config.sources.whoisNrd) {
       return { registrar: null, creationDate: null, abuseEmail: "" };
@@ -109,6 +121,7 @@ class ScanRun {
   private async ctLogsPhase(target: string): Promise<void> {
     this.progress(0, 0, `CT Logs — querying crt.sh for ${target}`);
     const entries = await ctLogs.fetchCtLogs(target, this.signal);
+    const stubMatches = this.stubMatchSet(target);
 
     for (let i = 0; i < entries.length; i++) {
       if (this.signal.aborted) break;
@@ -133,6 +146,7 @@ class ScanRun {
       result.hasWeb = dnsInfo.hasWeb;
       result.abuseContact = whois.abuseEmail;
       result.raw = entry.raw;
+      result.isCustomStubMatch = stubMatches.has(domain);
       this.emit(result);
       this.progress(i + 1, entries.length, `CT Logs — ${domain}`);
     }
@@ -140,8 +154,16 @@ class ScanRun {
 
   private async dnsPermutationPhase(target: string): Promise<void> {
     const stubs = this.config.customStubs;
+    // customDomains gates the "always show as available" bypass below — an
+    // unresolved reverse-subdomain candidate isn't something the target
+    // could defensively register (it'd be a subdomain of someone else's
+    // zone), so reverseSubStubDomains is deliberately excluded from it.
     const customDomains = permutations.customStubVariants(target, stubs, stubs);
-    const variants = [...permutations.generate(target, stubs, stubs)];
+    const reverseSubStubDomains = permutations.reverseSubdomainStubVariants(target, stubs);
+    const allStubDomains = new Set([...customDomains, ...reverseSubStubDomains]);
+    const variants = [
+      ...new Set([...permutations.generate(target, stubs, stubs), ...reverseSubStubDomains]),
+    ];
     const total = variants.length;
     this.progress(0, total, `DNS Permutation — ${total} variants for ${target}`);
     let resolvedCount = 0;
@@ -156,6 +178,7 @@ class ScanRun {
           if (!this.config.includeAvailable) return;
           const candidate = blankResult(domain, "DNS Permutation", target);
           candidate.isAvailable = true;
+          candidate.isCustomStubMatch = allStubDomains.has(domain);
           candidate.score = scoring.score(candidate);
           // Custom-stub domains always surface (user explicitly asked for
           // them). Other unresolved domains need a minimum structural score
@@ -175,6 +198,7 @@ class ScanRun {
         result.mxRecords = dnsInfo.mx;
         result.hasWeb = dnsInfo.hasWeb;
         result.abuseContact = whois.abuseEmail;
+        result.isCustomStubMatch = allStubDomains.has(domain);
         this.emit(result);
       },
       this.signal
@@ -185,6 +209,7 @@ class ScanRun {
     const clients = passiveDns.getClients(this.config.apiKeys);
     if (clients.length === 0) return;
     this.progress(0, 0, `Passive DNS — querying APIs for ${target}`);
+    const stubMatches = this.stubMatchSet(target);
 
     for (const client of clients) {
       if (this.signal.aborted) break;
@@ -200,6 +225,7 @@ class ScanRun {
         result.mxRecords = dnsInfo.mx;
         result.hasWeb = dnsInfo.hasWeb;
         result.raw = entry.raw;
+        result.isCustomStubMatch = stubMatches.has(domain);
         this.emit(result);
       }
     }

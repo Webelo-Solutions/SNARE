@@ -27,6 +27,14 @@ export const columns = [
             AVAILABLE
           </Badge>
         )}
+        {info.row.original.isCustomStubMatch && (
+          <Badge
+            className="bg-risk-high/15 text-risk-high border-risk-high/40 text-[10px] px-1.5 py-0"
+            title="Matches a custom stub keyword — always alerts regardless of score"
+          >
+            WATCHED
+          </Badge>
+        )}
       </div>
     ),
   }),

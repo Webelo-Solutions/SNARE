@@ -100,6 +100,10 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     screenshotPath,
     isNew: false,
     isAvailable,
+    // Not persisted — derived from the *current* custom stub config at scan
+    // time, same reasoning as isNew above. A reload of a historical scan
+    // can't retroactively know what stubs were configured back then.
+    isCustomStubMatch: false,
   };
 }
 

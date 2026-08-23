@@ -7,7 +7,12 @@ import { scoreLabel } from "@/lib/scoreLabel";
 export async function dispatch(newResults: DomainResult[], cfg: AlertConfig): Promise<string[]> {
   if (!cfg.enabled || newResults.length === 0) return [];
 
-  const hits = newResults.filter((r) => r.score >= cfg.minScore);
+  // A custom-stub match always qualifies regardless of score — it's an
+  // explicit keyword the user asked to always be notified about (e.g. a
+  // brand name showing up as a subdomain of a stub-themed apex domain),
+  // and such matches often score low on the edit-distance signal since the
+  // target's own label is untouched.
+  const hits = newResults.filter((r) => r.score >= cfg.minScore || r.isCustomStubMatch);
   if (hits.length === 0) return [];
 
   const errors: string[] = [];

@@ -96,6 +96,37 @@ export function customStubVariants(
   return new Set([...variants].filter((v) => v && v.length > 4 && v.includes(".")));
 }
 
+/**
+ * Reverse-subdomain stub variants: the target's own label used as a
+ * subdomain of a *stub-themed apex domain* — e.g. target "rate.com" + stub
+ * "support" -> "rate.support.com". This catches a different phishing
+ * pattern than customStubVariants(): rather than a variant of the target's
+ * own domain, the attacker registers an unrelated-looking apex (support.com,
+ * support.net, ...) outright and jams the brand name in front as a
+ * subdomain to look like a legitimate portal.
+ *
+ * Deliberately kept separate from customStubVariants() — unlike those
+ * patterns, an unresolved hit here isn't something the target could
+ * "defensively register" (it's a subdomain of someone else's zone), so it
+ * must not get the same always-surface-as-available treatment; it's only
+ * meaningful once it actually resolves.
+ */
+export function reverseSubdomainStubVariants(domain: string, stubs: string[]): Set<string> {
+  const [name, tld] = splitDomain(domain);
+  const variants = new Set<string>();
+  const tlds = new Set([tld, ...COMMON_TLDS]);
+
+  for (const raw of stubs) {
+    const stub = raw.trim().replace(/^-+|-+$/g, "").toLowerCase();
+    if (!stub) continue;
+    for (const candidateTld of tlds) {
+      variants.add(`${name}.${stub}${candidateTld}`);
+    }
+  }
+
+  return new Set([...variants].filter((v) => v && v.length > 4 && v.includes(".")));
+}
+
 export function generate(
   domain: string,
   extraPrefixes: string[] = [],

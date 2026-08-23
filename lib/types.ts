@@ -21,6 +21,11 @@ export interface DomainResult {
   screenshotPath: string;
   isNew: boolean;
   isAvailable: boolean;
+  /** True when this domain matches a user-defined custom stub (any of the
+   * prefix/suffix/subdomain-of-target/subdomain-of-stub shapes) — such
+   * matches bypass the alert score threshold, since they're explicit
+   * keywords the user asked to always be notified about. */
+  isCustomStubMatch: boolean;
   raw?: unknown;
 }
 
