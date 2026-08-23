@@ -47,6 +47,10 @@ export interface DomainResult {
   urlscanSource: string | null;
   urlscanUrl: string | null;
   urlscanMalicious: boolean | null;
+  /** Which CT-log index/indexes surfaced this domain (e.g. "crt.sh",
+   * "crt.name", or "crt.sh, crt.name" when both independently indexed it) —
+   * only meaningful for source === "CT Logs", null otherwise. */
+  ctLogIndex: string | null;
   raw?: unknown;
 }
 

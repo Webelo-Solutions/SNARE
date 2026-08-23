@@ -20,6 +20,7 @@ const HEADERS = [
   "urlscan Scanned",
   "urlscan Verdict",
   "urlscan URL",
+  "CT Log Index",
 ];
 
 function csvEscape(value: string): string {
@@ -63,6 +64,7 @@ export async function GET(
         r.urlscanScanned ? "Yes" : "No",
         r.urlscanMalicious === null ? "" : r.urlscanMalicious ? "Malicious" : "Clean",
         r.urlscanUrl ?? "",
+        r.ctLogIndex ?? "",
       ]
         .map(csvEscape)
         .join(",")

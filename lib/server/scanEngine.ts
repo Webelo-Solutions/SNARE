@@ -45,6 +45,7 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     urlscanSource: null,
     urlscanUrl: null,
     urlscanMalicious: null,
+    ctLogIndex: null,
   };
 }
 
@@ -187,7 +188,7 @@ class ScanRun {
   // ------------------------------------------------------------------ //
 
   private async ctLogsPhase(target: string): Promise<void> {
-    this.progress(0, 0, `CT Logs — querying crt.sh for ${target}`);
+    this.progress(0, 0, `CT Logs — querying crt.sh + crt.name for ${target}`);
     const entries = await ctLogs.fetchCtLogs(target, this.signal);
     const stubMatches = this.stubMatchSet(target);
 
@@ -214,6 +215,7 @@ class ScanRun {
       result.hasWeb = dnsInfo.hasWeb;
       result.abuseContact = whois.abuseEmail;
       result.raw = entry.raw;
+      result.ctLogIndex = entry.sources.join(", ");
       result.isCustomStubMatch = stubMatches.has(domain);
       result.technique = this.technique(domain, target);
       result.parkedService = await this.checkParking(domain, result.hasWeb);

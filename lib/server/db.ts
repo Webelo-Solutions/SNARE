@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS results (
     urlscan_source       TEXT,
     urlscan_url          TEXT,
     urlscan_malicious    INTEGER,
+    ct_log_index         TEXT,
     first_discovered TEXT    NOT NULL,
     last_seen        TEXT    NOT NULL,
     UNIQUE(domain, target)
@@ -67,6 +68,7 @@ interface ResultRow {
   urlscan_source: string | null;
   urlscan_url: string | null;
   urlscan_malicious: number | null;
+  ct_log_index: string | null;
   first_discovered: string;
   last_seen: string;
 }
@@ -122,6 +124,7 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     urlscanSource: row.urlscan_source,
     urlscanUrl: row.urlscan_url,
     urlscanMalicious: row.urlscan_malicious === null ? null : Boolean(row.urlscan_malicious),
+    ctLogIndex: row.ct_log_index,
     isNew: false,
     isAvailable,
     // Not persisted — derived from the *current* custom stub config at scan
@@ -187,6 +190,9 @@ class SnareDatabase {
     if (!hasColumn("urlscan_malicious")) {
       this.conn.exec("ALTER TABLE results ADD COLUMN urlscan_malicious INTEGER");
     }
+    if (!hasColumn("ct_log_index")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN ct_log_index TEXT");
+    }
   }
 
   beginScan(targets: string[]): number {
@@ -218,8 +224,9 @@ class SnareDatabase {
              screenshot_path, technique, parked_service,
              vt_malicious_count, vt_suspicious_count,
              urlscan_scanned, urlscan_source, urlscan_url, urlscan_malicious,
+             ct_log_index,
              first_discovered, last_seen)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           scanId,
@@ -242,6 +249,7 @@ class SnareDatabase {
           result.urlscanSource,
           result.urlscanUrl,
           result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
+          result.ctLogIndex,
           ts,
           ts
         );
@@ -259,6 +267,7 @@ class SnareDatabase {
                  has_web=?, abuse_contact=?, technique=?, parked_service=?,
                  vt_malicious_count=?, vt_suspicious_count=?,
                  urlscan_scanned=?, urlscan_source=?, urlscan_url=?, urlscan_malicious=?,
+                 ct_log_index=?,
                  last_seen=?
              WHERE domain=? AND target=?`
           )
@@ -278,6 +287,7 @@ class SnareDatabase {
             result.urlscanSource,
             result.urlscanUrl,
             result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
+            result.ctLogIndex,
             ts,
             result.domain,
             result.target

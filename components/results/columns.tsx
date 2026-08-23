@@ -53,7 +53,15 @@ export const columns = [
   }),
   columnHelper.accessor("source", {
     header: "Source",
-    cell: (info) => <span className="text-[13px] text-text-dim">{info.getValue()}</span>,
+    cell: (info) => {
+      const ctLogIndex = info.row.original.ctLogIndex;
+      return (
+        <span className="text-[13px] text-text-dim">
+          {info.getValue()}
+          {ctLogIndex && <span className="opacity-70"> ({ctLogIndex})</span>}
+        </span>
+      );
+    },
   }),
   columnHelper.accessor("technique", {
     header: "Technique",
