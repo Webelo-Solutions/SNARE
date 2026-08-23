@@ -14,6 +14,7 @@ const HEADERS = [
   "First Seen",
   "Abuse Contact",
   "Is Available",
+  "Parked Service",
 ];
 
 function csvEscape(value: string): string {
@@ -51,6 +52,7 @@ export async function GET(
         r.firstSeen ?? "",
         r.abuseContact,
         r.isAvailable ? "Yes" : "No",
+        r.parkedService ?? "",
       ]
         .map(csvEscape)
         .join(",")

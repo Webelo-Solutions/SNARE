@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS results (
     abuse_contact    TEXT    DEFAULT '',
     screenshot_path  TEXT    DEFAULT '',
     technique        TEXT    DEFAULT '',
+    parked_service   TEXT,
     first_discovered TEXT    NOT NULL,
     last_seen        TEXT    NOT NULL,
     UNIQUE(domain, target)
@@ -53,6 +54,7 @@ interface ResultRow {
   abuse_contact: string;
   screenshot_path: string;
   technique: string | null;
+  parked_service: string | null;
   first_discovered: string;
   last_seen: string;
 }
@@ -101,6 +103,7 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     abuseContact: row.abuse_contact || "",
     screenshotPath,
     technique: row.technique || "",
+    parkedService: row.parked_service || null,
     isNew: false,
     isAvailable,
     // Not persisted — derived from the *current* custom stub config at scan
@@ -145,6 +148,9 @@ class SnareDatabase {
     if (!hasColumn("technique")) {
       this.conn.exec("ALTER TABLE results ADD COLUMN technique TEXT DEFAULT ''");
     }
+    if (!hasColumn("parked_service")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN parked_service TEXT");
+    }
   }
 
   beginScan(targets: string[]): number {
@@ -173,8 +179,8 @@ class SnareDatabase {
           `INSERT INTO results
             (scan_id, domain, target, source, score, first_seen,
              registrar, ips, mx_records, has_web, abuse_contact,
-             screenshot_path, technique, first_discovered, last_seen)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             screenshot_path, technique, parked_service, first_discovered, last_seen)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           scanId,
@@ -190,6 +196,7 @@ class SnareDatabase {
           result.abuseContact,
           result.screenshotPath,
           result.technique,
+          result.parkedService,
           ts,
           ts
         );
@@ -204,7 +211,7 @@ class SnareDatabase {
           .prepare(
             `UPDATE results
              SET scan_id=?, score=?, registrar=?, ips=?, mx_records=?,
-                 has_web=?, abuse_contact=?, technique=?, last_seen=?
+                 has_web=?, abuse_contact=?, technique=?, parked_service=?, last_seen=?
              WHERE domain=? AND target=?`
           )
           .run(
@@ -216,6 +223,7 @@ class SnareDatabase {
             result.hasWeb ? 1 : 0,
             result.abuseContact,
             result.technique,
+            result.parkedService,
             ts,
             result.domain,
             result.target

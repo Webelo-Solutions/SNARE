@@ -14,6 +14,7 @@ import { dispatch as dispatchAlerts, filterAlertHits } from "./alerting";
 import { emitAppAlert } from "./alertStream";
 import { captureBatch } from "./screenshot";
 import { classifyPermutation } from "./classifyPermutation";
+import { detectParking } from "./parkingDetector";
 
 // Minimum structure-only score for an unresolved domain to be surfaced as an
 // available defensive-registration candidate. Edit distance 2 = 25 pts.
@@ -36,6 +37,7 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     isAvailable: false,
     isCustomStubMatch: false,
     technique: "",
+    parkedService: null,
   };
 }
 
@@ -107,6 +109,15 @@ class ScanRun {
     return classifyPermutation(domain, target, this.config.customStubs);
   }
 
+  private async checkParking(domain: string, hasWeb: boolean): Promise<string | null> {
+    if (!hasWeb) return null;
+    try {
+      return await detectParking(domain);
+    } catch {
+      return null;
+    }
+  }
+
   private async enrichWhois(domain: string): Promise<WhoisEnrichment> {
     if (!this.config.sources.whoisNrd) {
       return { registrar: null, creationDate: null, abuseEmail: "" };
@@ -155,6 +166,7 @@ class ScanRun {
       result.raw = entry.raw;
       result.isCustomStubMatch = stubMatches.has(domain);
       result.technique = this.technique(domain, target);
+      result.parkedService = await this.checkParking(domain, result.hasWeb);
       this.emit(result);
       this.progress(i + 1, entries.length, `CT Logs — ${domain}`);
     }
@@ -209,6 +221,7 @@ class ScanRun {
         result.abuseContact = whois.abuseEmail;
         result.isCustomStubMatch = allStubDomains.has(domain);
         result.technique = this.technique(domain, target);
+        result.parkedService = await this.checkParking(domain, result.hasWeb);
         this.emit(result);
       },
       this.signal
@@ -237,6 +250,7 @@ class ScanRun {
         result.raw = entry.raw;
         result.isCustomStubMatch = stubMatches.has(domain);
         result.technique = this.technique(domain, target);
+        result.parkedService = await this.checkParking(domain, result.hasWeb);
         this.emit(result);
       }
     }

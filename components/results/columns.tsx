@@ -35,6 +35,14 @@ export const columns = [
             WATCHED
           </Badge>
         )}
+        {info.row.original.parkedService && (
+          <Badge
+            className="bg-surface2 text-text-dim border-border text-[10px] px-1.5 py-0"
+            title={`Redirects to a domain-parking/marketplace page (${info.row.original.parkedService}) — likely not live phishing infrastructure yet`}
+          >
+            PARKED · {info.row.original.parkedService}
+          </Badge>
+        )}
       </div>
     ),
   }),

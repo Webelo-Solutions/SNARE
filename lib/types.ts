@@ -31,6 +31,11 @@ export interface DomainResult {
    * "Combosquat (Prefix)", "TLD Variation" — distinct from `source`, which
    * only says which scan phase discovered it. */
   technique: string;
+  /** Name of the domain-parking/marketplace service this resolves to (e.g.
+   * "GoDaddy Parking", "Sedo"), or null if not detected as parked. A
+   * separate axis from `score` — a parked domain can still structurally
+   * resemble the target closely, it just isn't live phishing infra yet. */
+  parkedService: string | null;
   raw?: unknown;
 }
 
