@@ -1,5 +1,7 @@
 import "server-only";
+import fs from "node:fs";
 import nodemailer from "nodemailer";
+import { formatDistanceToNow } from "date-fns";
 import type { AlertConfig, DomainResult } from "@/lib/types";
 import { scoreLabel } from "@/lib/scoreLabel";
 
@@ -65,6 +67,8 @@ async function sendEmail(
     ? "SNARE — Test notification"
     : `SNARE Alert — ${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected`;
 
+  const { html, attachments } = buildEmailContent(hits, test);
+
   try {
     const transport = nodemailer.createTransport({
       host: cfg.smtpHost,
@@ -76,7 +80,8 @@ async function sendEmail(
       from: cfg.smtpUser || "snare@localhost",
       to: cfg.emailTo,
       subject,
-      html: emailBody(hits, test),
+      html,
+      attachments,
     });
     return null;
   } catch (err) {
@@ -84,56 +89,141 @@ async function sendEmail(
   }
 }
 
-function emailBody(hits: DomainResult[], test: boolean): string {
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+/** label/value row for the per-domain field table — value is pre-escaped
+ * by the caller since some values are HTML (badges, colored spans). */
+function fieldRow(label: string, valueHtml: string): string {
+  return `
+    <tr>
+      <td style="padding:5px 12px;color:#6c7086;font-size:12px;white-space:nowrap;vertical-align:top;">${label}</td>
+      <td style="padding:5px 12px;font-size:13px;">${valueHtml}</td>
+    </tr>`;
+}
+
+function badge(text: string, color: string): string {
+  return `<span style="display:inline-block;background:${color}22;color:${color};border:1px solid ${color}66;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:bold;margin-right:4px;">${text}</span>`;
+}
+
+interface EmailAttachment {
+  filename: string;
+  path: string;
+  cid: string;
+}
+
+export function buildEmailContent(
+  hits: DomainResult[],
+  test: boolean
+): { html: string; attachments: EmailAttachment[] } {
   const ts = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
   if (test) {
-    return `
-      <html><body style="font-family:Arial,sans-serif;background:#12121e;color:#cdd6f4;padding:24px;">
-      <h2 style="color:#89b4fa;">SNARE — Test Notification</h2>
-      <p>Your alert configuration is working correctly.</p>
-      <p style="color:#6c7086;font-size:12px;">${ts}</p>
-      </body></html>
-    `;
+    return {
+      html: `
+        <html><head><meta charset="utf-8"></head><body style="font-family:Arial,sans-serif;background:#12121e;color:#cdd6f4;padding:24px;">
+        <h2 style="color:#89b4fa;">SNARE — Test Notification</h2>
+        <p>Your alert configuration is working correctly.</p>
+        <p style="color:#6c7086;font-size:12px;">${ts}</p>
+        </body></html>
+      `,
+      attachments: [],
+    };
   }
 
-  const rows = hits
-    .map((r) => {
+  const attachments: EmailAttachment[] = [];
+
+  const cards = hits
+    .map((r, i) => {
       const color = r.score >= 70 ? "#f38ba8" : r.score >= 50 ? "#fab387" : "#f9e2af";
+
+      const badges = [
+        r.isNew ? badge("NEW", "#89b4fa") : "",
+        r.isCustomStubMatch ? badge("WATCHED", "#fab387") : "",
+        r.isAvailable ? badge("AVAILABLE", "#a6e3a1") : "",
+        r.parkedService ? badge(`PARKED · ${escapeHtml(r.parkedService)}`, "#6c7086") : "",
+      ]
+        .filter(Boolean)
+        .join("");
+
+      const age = r.firstSeen
+        ? `${escapeHtml(r.firstSeen.slice(0, 10))} (${formatDistanceToNow(new Date(r.firstSeen), { addSuffix: true })})`
+        : "—";
+
+      const vt =
+        r.vtMaliciousCount === null
+          ? "—"
+          : `${r.vtMaliciousCount} malicious, ${r.vtSuspiciousCount ?? 0} suspicious`;
+
+      const urlscan = !r.urlscanScanned
+        ? "Not scanned"
+        : r.urlscanMalicious === true
+          ? `<a href="${escapeHtml(r.urlscanUrl ?? "")}" style="color:#f38ba8;">Malicious</a>`
+          : r.urlscanMalicious === false
+            ? `<a href="${escapeHtml(r.urlscanUrl ?? "")}" style="color:#a6e3a1;">Clean</a>`
+            : r.urlscanUrl
+              ? `<a href="${escapeHtml(r.urlscanUrl)}" style="color:#cdd6f4;">Scanned${r.urlscanSource === "certstream-suspicious" ? " (auto-flagged suspicious)" : ""}</a>`
+              : "Scanned";
+
+      let screenshotHtml = "";
+      if (r.screenshotPath && fs.existsSync(r.screenshotPath)) {
+        const cid = `screenshot${i}@snare`;
+        attachments.push({ filename: `${r.domain}.png`, path: r.screenshotPath, cid });
+        screenshotHtml = `<div style="margin-top:10px;"><img src="cid:${cid}" style="max-width:100%;border-radius:6px;border:1px solid #313244;" /></div>`;
+      } else {
+        screenshotHtml = `<p style="color:#6c7086;font-size:12px;margin-top:8px;">No screenshot available.</p>`;
+      }
+
+      const rows = [
+        fieldRow(
+          "Score",
+          `<span style="color:${color};font-weight:bold;">${r.score} — ${scoreLabel(r.score)}</span>`
+        ),
+        fieldRow("Target", escapeHtml(r.target)),
+        fieldRow(
+          "Source",
+          escapeHtml(r.source) + (r.ctLogIndex ? ` <span style="color:#6c7086;">(${escapeHtml(r.ctLogIndex)})</span>` : "")
+        ),
+        fieldRow("Technique", r.technique ? escapeHtml(r.technique) : "—"),
+        fieldRow("Registered", age),
+        fieldRow("Registrar", r.registrar ? escapeHtml(r.registrar) : "—"),
+        fieldRow("IPs", r.ips.length > 0 ? escapeHtml(r.ips.join(", ")) : "—"),
+        fieldRow("MX Records", r.mxRecords.length > 0 ? escapeHtml(r.mxRecords.join(", ")) : "—"),
+        fieldRow("Web Active", r.hasWeb ? "Yes" : "No"),
+        fieldRow("Abuse Contact", r.abuseContact ? escapeHtml(r.abuseContact) : "—"),
+        fieldRow("VirusTotal", vt),
+        fieldRow("urlscan.io", urlscan),
+      ].join("");
+
       return `
-        <tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;">${r.domain}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;">${r.target}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;color:${color};font-weight:bold;">
-            ${r.score} — ${scoreLabel(r.score)}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;">${r.source}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;">${r.ips.join(", ") || "—"}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #313244;">${r.hasWeb ? "Yes" : "No"}</td>
-        </tr>`;
+        <div style="background:#1e1e2e;border-radius:8px;padding:16px;margin-bottom:16px;">
+          <div style="font-family:monospace;font-size:15px;font-weight:bold;margin-bottom:6px;">
+            ${escapeHtml(r.domain)} ${badges}
+          </div>
+          <table style="border-collapse:collapse;width:100%;">${rows}</table>
+          ${screenshotHtml}
+        </div>`;
     })
     .join("");
 
-  return `
-    <html><body style="font-family:Arial,sans-serif;background:#12121e;color:#cdd6f4;padding:24px;">
-    <h2 style="color:#89b4fa;">SNARE Alert</h2>
-    <p>${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected — ${ts}</p>
-    <table style="border-collapse:collapse;width:100%;background:#1e1e2e;border-radius:6px;overflow:hidden;">
-      <thead>
-        <tr style="background:#313244;color:#cdd6f4;">
-          <th style="padding:10px 12px;text-align:left;">Domain</th>
-          <th style="padding:10px 12px;text-align:left;">Target</th>
-          <th style="padding:10px 12px;text-align:left;">Score</th>
-          <th style="padding:10px 12px;text-align:left;">Source</th>
-          <th style="padding:10px 12px;text-align:left;">IPs</th>
-          <th style="padding:10px 12px;text-align:left;">Web</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <p style="color:#6c7086;font-size:12px;margin-top:24px;">
-      Sent by SNARE — Domain Surveillance</p>
-    </body></html>
-  `;
+  return {
+    html: `
+      <html><head><meta charset="utf-8"></head><body style="font-family:Arial,sans-serif;background:#12121e;color:#cdd6f4;padding:24px;">
+      <h2 style="color:#89b4fa;">SNARE Alert</h2>
+      <p>${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected — ${ts}</p>
+      ${cards}
+      <p style="color:#6c7086;font-size:12px;margin-top:8px;">
+        Sent by SNARE — Domain Surveillance</p>
+      </body></html>
+    `,
+    attachments,
+  };
 }
 
 // ------------------------------------------------------------------ //
