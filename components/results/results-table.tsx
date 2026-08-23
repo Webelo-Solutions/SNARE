@@ -59,7 +59,7 @@ export function ResultsTable({ results }: { results: DomainResult[] }) {
   }
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="min-w-0 flex-1 overflow-auto">
       <Table>
         <TableHeader className="sticky top-0 z-10 bg-surface2">
           {table.getHeaderGroups().map((headerGroup) => (
