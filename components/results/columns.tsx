@@ -1,0 +1,104 @@
+"use client";
+
+import { createColumnHelper } from "@tanstack/react-table";
+import { formatDistanceToNow } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+import { ScoreBadge } from "@/components/score-badge";
+import { ScreenshotCell } from "./screenshot-cell";
+import { TakedownNoticeModal } from "@/components/dialogs/takedown-notice-modal";
+import { RegisterDomainButton } from "@/components/dialogs/register-domain-button";
+import type { DomainResult } from "@/lib/types";
+
+const columnHelper = createColumnHelper<DomainResult>();
+
+export const columns = [
+  columnHelper.accessor("domain", {
+    header: "Domain",
+    cell: (info) => (
+      <div className="flex items-center gap-1.5 font-mono text-[13px]">
+        <span>{info.getValue()}</span>
+        {info.row.original.isNew && (
+          <Badge className="bg-primary/15 text-primary border-primary/40 text-[10px] px-1.5 py-0">
+            NEW
+          </Badge>
+        )}
+        {info.row.original.isAvailable && (
+          <Badge className="bg-risk-green/15 text-risk-green border-risk-green/40 text-[10px] px-1.5 py-0">
+            AVAILABLE
+          </Badge>
+        )}
+      </div>
+    ),
+  }),
+  columnHelper.accessor("target", {
+    header: "Target",
+    cell: (info) => <span className="text-text-dim text-[13px]">{info.getValue()}</span>,
+  }),
+  columnHelper.accessor("source", {
+    header: "Source",
+    cell: (info) => <span className="text-[13px]">{info.getValue()}</span>,
+  }),
+  columnHelper.accessor("score", {
+    header: "Score",
+    cell: (info) => <ScoreBadge score={info.getValue()} />,
+    sortDescFirst: true,
+  }),
+  columnHelper.accessor("registrar", {
+    header: "Registrar",
+    cell: (info) => <span className="text-[13px]">{info.getValue() ?? "—"}</span>,
+  }),
+  columnHelper.accessor("ips", {
+    header: "IPs",
+    cell: (info) => (
+      <span className="text-[13px] font-mono">
+        {info.getValue().length > 0 ? info.getValue().join(", ") : "—"}
+      </span>
+    ),
+  }),
+  columnHelper.accessor("mxRecords", {
+    header: "MX",
+    cell: (info) => (info.getValue().length > 0 ? "Yes" : "No"),
+  }),
+  columnHelper.accessor("hasWeb", {
+    header: "Web",
+    cell: (info) => (info.getValue() ? "Yes" : "No"),
+  }),
+  columnHelper.accessor("firstSeen", {
+    header: "Age",
+    cell: (info) => {
+      const v = info.getValue();
+      return (
+        <span className="text-[13px] text-text-dim">
+          {v ? formatDistanceToNow(new Date(v), { addSuffix: true }) : "—"}
+        </span>
+      );
+    },
+  }),
+  columnHelper.accessor("abuseContact", {
+    header: "Abuse Contact",
+    cell: (info) => <span className="text-[13px]">{info.getValue() || "—"}</span>,
+  }),
+  columnHelper.display({
+    id: "screenshot",
+    header: "Screenshot",
+    cell: (info) => (
+      <ScreenshotCell
+        result={info.row.original}
+        onCaptured={info.table.options.meta?.onScreenshotCaptured}
+      />
+    ),
+  }),
+  columnHelper.display({
+    id: "actions",
+    header: "Actions",
+    cell: (info) => {
+      const result = info.row.original;
+      return (
+        <div className="flex items-center gap-3">
+          <TakedownNoticeModal result={result} />
+          {result.isAvailable && <RegisterDomainButton domain={result.domain} />}
+        </div>
+      );
+    },
+  }),
+];

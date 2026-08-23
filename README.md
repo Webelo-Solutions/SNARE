@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SNARE
 
-## Getting Started
+Web-based typosquat and homoglyph domain monitoring for brand protection. Rebuilt from the original PyQt6 desktop app as a self-hosted Next.js app — single user, no login.
 
-First, run the development server:
+## Features
+
+- Domain permutation generation (character deletion/doubling/transposition, QWERTY-adjacent substitution, homoglyphs, Cyrillic confusables, leetspeak, combosquatting, TLD variation, custom prefix/suffix stubs)
+- Certificate Transparency log search (crt.sh), DNS resolution, WHOIS/RDAP enrichment, optional Passive DNS (SecurityTrails / VirusTotal)
+- 0–100 risk scoring with live-streaming results during a scan
+- Include/exclude pattern filters (regex, keyword, edit distance, combosquat position)
+- Scan history with delta ("new domain") detection, CSV export
+- Scheduled recurring scans (runs unattended, no browser tab required)
+- Email / Slack / Microsoft Teams alerts for new high-risk domains
+- Screenshot capture of live squatted sites (Playwright)
+- Takedown notice generation + registrar abuse-contact lookup
+- One-click defensive registration links (Namecheap, GoDaddy, Porkbun, Dynadot, Hover, Squarespace)
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev            # interactive use — http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For scheduled scans to keep firing unattended, run it as a standing production server instead of dev mode:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+npm start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Leave that process running (e.g. in its own terminal, or as a background/Task Scheduler job) for scheduled scans and alerts to fire without a browser open.
 
-## Learn More
+## Data storage
 
-To learn more about Next.js, take a look at the following resources:
+All state lives locally under `%APPDATA%\snare\`:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `config.json` — targets, patterns, source toggles, API keys, sender profile, schedule, alert channels
+- `snare.db` — SQLite database of every scan run and discovered domain
+- `screenshots\` — captured PNGs of web-active squatted domains
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+No data leaves your machine except the outbound lookups the scan itself makes (crt.sh, RDAP/WHOIS, DNS, and — if configured — SecurityTrails/VirusTotal, SMTP, Slack/Teams webhooks).
 
-## Deploy on Vercel
+## Tech stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js (App Router) + TypeScript, `better-sqlite3`, Server-Sent Events for live scan progress, an `instrumentation.ts`-based scheduler loop, Playwright for screenshots, Tailwind + shadcn/ui for the UI.
