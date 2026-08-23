@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS results (
     has_web          INTEGER DEFAULT 0,
     abuse_contact    TEXT    DEFAULT '',
     screenshot_path  TEXT    DEFAULT '',
+    technique        TEXT    DEFAULT '',
     first_discovered TEXT    NOT NULL,
     last_seen        TEXT    NOT NULL,
     UNIQUE(domain, target)
@@ -51,6 +52,7 @@ interface ResultRow {
   has_web: number;
   abuse_contact: string;
   screenshot_path: string;
+  technique: string | null;
   first_discovered: string;
   last_seen: string;
 }
@@ -98,6 +100,7 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     score: row.score,
     abuseContact: row.abuse_contact || "",
     screenshotPath,
+    technique: row.technique || "",
     isNew: false,
     isAvailable,
     // Not persisted — derived from the *current* custom stub config at scan
@@ -127,6 +130,21 @@ class SnareDatabase {
     this.conn.pragma("journal_mode = WAL");
     this.conn.pragma("busy_timeout = 5000");
     this.conn.exec(SCHEMA);
+    this.migrate();
+  }
+
+  /** Additive schema changes for databases created before a given column
+   * existed. CREATE TABLE IF NOT EXISTS above only applies to brand-new
+   * databases, so existing ones need an explicit ALTER TABLE. */
+  private migrate(): void {
+    const columns = this.conn.prepare("PRAGMA table_info(results)").all() as Array<{
+      name: string;
+    }>;
+    const hasColumn = (name: string) => columns.some((c) => c.name === name);
+
+    if (!hasColumn("technique")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN technique TEXT DEFAULT ''");
+    }
   }
 
   beginScan(targets: string[]): number {
@@ -155,8 +173,8 @@ class SnareDatabase {
           `INSERT INTO results
             (scan_id, domain, target, source, score, first_seen,
              registrar, ips, mx_records, has_web, abuse_contact,
-             screenshot_path, first_discovered, last_seen)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             screenshot_path, technique, first_discovered, last_seen)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           scanId,
@@ -171,6 +189,7 @@ class SnareDatabase {
           result.hasWeb ? 1 : 0,
           result.abuseContact,
           result.screenshotPath,
+          result.technique,
           ts,
           ts
         );
@@ -185,7 +204,7 @@ class SnareDatabase {
           .prepare(
             `UPDATE results
              SET scan_id=?, score=?, registrar=?, ips=?, mx_records=?,
-                 has_web=?, abuse_contact=?, last_seen=?
+                 has_web=?, abuse_contact=?, technique=?, last_seen=?
              WHERE domain=? AND target=?`
           )
           .run(
@@ -196,6 +215,7 @@ class SnareDatabase {
             JSON.stringify(result.mxRecords),
             result.hasWeb ? 1 : 0,
             result.abuseContact,
+            result.technique,
             ts,
             result.domain,
             result.target

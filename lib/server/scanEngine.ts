@@ -13,6 +13,7 @@ import { loadConfig, updateConfig } from "./config";
 import { dispatch as dispatchAlerts, filterAlertHits } from "./alerting";
 import { emitAppAlert } from "./alertStream";
 import { captureBatch } from "./screenshot";
+import { classifyPermutation } from "./classifyPermutation";
 
 // Minimum structure-only score for an unresolved domain to be surfaced as an
 // available defensive-registration candidate. Edit distance 2 = 25 pts.
@@ -34,6 +35,7 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     isNew: false,
     isAvailable: false,
     isCustomStubMatch: false,
+    technique: "",
   };
 }
 
@@ -101,6 +103,10 @@ class ScanRun {
     ]);
   }
 
+  private technique(domain: string, target: string): string {
+    return classifyPermutation(domain, target, this.config.customStubs);
+  }
+
   private async enrichWhois(domain: string): Promise<WhoisEnrichment> {
     if (!this.config.sources.whoisNrd) {
       return { registrar: null, creationDate: null, abuseEmail: "" };
@@ -148,6 +154,7 @@ class ScanRun {
       result.abuseContact = whois.abuseEmail;
       result.raw = entry.raw;
       result.isCustomStubMatch = stubMatches.has(domain);
+      result.technique = this.technique(domain, target);
       this.emit(result);
       this.progress(i + 1, entries.length, `CT Logs — ${domain}`);
     }
@@ -180,6 +187,7 @@ class ScanRun {
           const candidate = blankResult(domain, "DNS Permutation", target);
           candidate.isAvailable = true;
           candidate.isCustomStubMatch = allStubDomains.has(domain);
+          candidate.technique = this.technique(domain, target);
           candidate.score = scoring.score(candidate);
           // Custom-stub domains always surface (user explicitly asked for
           // them). Other unresolved domains need a minimum structural score
@@ -200,6 +208,7 @@ class ScanRun {
         result.hasWeb = dnsInfo.hasWeb;
         result.abuseContact = whois.abuseEmail;
         result.isCustomStubMatch = allStubDomains.has(domain);
+        result.technique = this.technique(domain, target);
         this.emit(result);
       },
       this.signal
@@ -227,6 +236,7 @@ class ScanRun {
         result.hasWeb = dnsInfo.hasWeb;
         result.raw = entry.raw;
         result.isCustomStubMatch = stubMatches.has(domain);
+        result.technique = this.technique(domain, target);
         this.emit(result);
       }
     }

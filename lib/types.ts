@@ -26,6 +26,11 @@ export interface DomainResult {
    * matches bypass the alert score threshold, since they're explicit
    * keywords the user asked to always be notified about. */
   isCustomStubMatch: boolean;
+  /** Human-readable classification of *how* this domain relates to its
+   * target — e.g. "Cyrillic Homoglyph", "Character Deletion",
+   * "Combosquat (Prefix)", "TLD Variation" — distinct from `source`, which
+   * only says which scan phase discovered it. */
+  technique: string;
   raw?: unknown;
 }
 

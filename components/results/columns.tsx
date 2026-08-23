@@ -44,7 +44,20 @@ export const columns = [
   }),
   columnHelper.accessor("source", {
     header: "Source",
-    cell: (info) => <span className="text-[13px]">{info.getValue()}</span>,
+    cell: (info) => <span className="text-[13px] text-text-dim">{info.getValue()}</span>,
+  }),
+  columnHelper.accessor("technique", {
+    header: "Technique",
+    cell: (info) => {
+      const value = info.getValue();
+      if (!value) return <span className="text-text-dim">—</span>;
+      const highSignal = value === "Cyrillic Homoglyph" || value === "Subdomain of Attacker Domain";
+      return (
+        <span className={`text-[13px] ${highSignal ? "text-risk-critical font-medium" : ""}`}>
+          {value}
+        </span>
+      );
+    },
   }),
   columnHelper.accessor("score", {
     header: "Score",
