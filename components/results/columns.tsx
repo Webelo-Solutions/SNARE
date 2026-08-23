@@ -70,11 +70,17 @@ export const columns = [
   }),
   columnHelper.accessor("ips", {
     header: "IPs",
-    cell: (info) => (
-      <span className="text-[13px] font-mono">
-        {info.getValue().length > 0 ? info.getValue().join(", ") : "—"}
-      </span>
-    ),
+    cell: (info) => {
+      const ips = info.getValue();
+      if (ips.length === 0) return <span className="text-text-dim">—</span>;
+      return (
+        <div className="flex flex-col text-[13px] font-mono leading-tight">
+          {ips.map((ip) => (
+            <span key={ip}>{ip}</span>
+          ))}
+        </div>
+      );
+    },
   }),
   columnHelper.accessor("mxRecords", {
     header: "MX",
