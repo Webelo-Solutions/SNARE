@@ -226,6 +226,31 @@ class SnareDatabase {
     }
   }
 
+  /**
+   * Recompute `technique` for every stored result using the given
+   * classifier — used to backfill rows saved before the technique
+   * classifier existed (or after its logic changes). Uses the *current*
+   * custom-stub config, same caveat as isCustomStubMatch elsewhere: a
+   * historical scan's actual stub config at the time isn't retained.
+   */
+  backfillTechniques(classify: (domain: string, target: string) => string): number {
+    const rows = this.conn.prepare("SELECT id, domain, target FROM results").all() as Array<{
+      id: number;
+      domain: string;
+      target: string;
+    }>;
+
+    const update = this.conn.prepare("UPDATE results SET technique=? WHERE id=?");
+    const applyAll = this.conn.transaction((items: typeof rows) => {
+      for (const row of items) {
+        update.run(classify(row.domain, row.target), row.id);
+      }
+    });
+    applyAll(rows);
+
+    return rows.length;
+  }
+
   updateScreenshot(domain: string, target: string, path: string): void {
     this.conn
       .prepare(
