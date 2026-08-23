@@ -10,7 +10,8 @@ import * as patternsLib from "./patterns";
 import { getDb } from "./db";
 import { emitScanEvent } from "./events";
 import { loadConfig, updateConfig } from "./config";
-import { dispatch as dispatchAlerts } from "./alerting";
+import { dispatch as dispatchAlerts, filterAlertHits } from "./alerting";
+import { emitAppAlert } from "./alertStream";
 import { captureBatch } from "./screenshot";
 
 // Minimum structure-only score for an unresolved domain to be surfaced as an
@@ -287,6 +288,11 @@ export function startScan(targets: string[], config: Config, patterns: Pattern[]
       updateConfig({ schedule: { ...latest.schedule, lastRunAt: new Date().toISOString() } });
 
       if (latest.alerts.enabled && run.results.length > 0) {
+        const hits = filterAlertHits(run.results, latest.alerts);
+        if (latest.alerts.inApp && hits.length > 0) {
+          emitAppAlert({ type: "alert", scanId, results: hits });
+        }
+
         const errors = await dispatchAlerts(run.results, latest.alerts);
         if (errors.length > 0) {
           emitScanEvent(scanId, {

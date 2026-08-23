@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,54 @@ function TestButton({ channel }: { channel: "email" | "slack" | "teams" }) {
   return (
     <Button variant="outline" size="sm" onClick={handleTest} disabled={pending}>
       Send Test
+    </Button>
+  );
+}
+
+type NotificationPermissionState = NotificationPermission | "unsupported";
+
+function DesktopNotificationPermission() {
+  const [permission, setPermission] = useState<NotificationPermissionState>("default");
+
+  useEffect(() => {
+    // Notification.permission is a browser-only global with no server-side
+    // equivalent — unlike a prop/state-derived value, there's nothing to
+    // compute during render on the server, so this genuinely needs an
+    // effect rather than the render-time-adjustment pattern used elsewhere.
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPermission("unsupported");
+      return;
+    }
+    setPermission(Notification.permission);
+  }, []);
+
+  async function requestPermission() {
+    if (!("Notification" in window)) return;
+    const result = await Notification.requestPermission();
+    setPermission(result);
+    if (result === "granted") toast.success("Desktop notifications enabled for this browser.");
+    else if (result === "denied") {
+      toast.error("Desktop notifications blocked — enable them in your browser's site settings.");
+    }
+  }
+
+  if (permission === "unsupported") {
+    return <p className="text-xs text-text-dim">Desktop notifications aren&apos;t supported in this browser.</p>;
+  }
+  if (permission === "granted") {
+    return <p className="text-xs text-risk-green">Desktop notifications enabled for this browser.</p>;
+  }
+  if (permission === "denied") {
+    return (
+      <p className="text-xs text-risk-critical">
+        Desktop notifications are blocked — enable them in your browser&apos;s site settings for this page.
+      </p>
+    );
+  }
+  return (
+    <Button variant="outline" size="sm" onClick={requestPermission}>
+      Enable desktop notifications
     </Button>
   );
 }
@@ -71,6 +119,22 @@ export function AlertsForm() {
             onCommit={(v) => update({ minScore: Math.min(100, Math.max(0, Number(v) || 0)) })}
             className="w-24"
           />
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium">In-app notifications</div>
+              <div className="text-xs text-text-dim">
+                Toast in the app + a real desktop notification, no external service needed —
+                only fires while a SNARE tab is open somewhere.
+              </div>
+            </div>
+            <Switch checked={alerts.inApp} onCheckedChange={(v) => update({ inApp: v })} />
+          </label>
+          <DesktopNotificationPermission />
         </div>
 
         <Separator />

@@ -72,6 +72,9 @@ export interface ScheduleConfig {
 export interface AlertConfig {
   enabled: boolean;
   minScore: number;
+  /** In-app toast (+ optional browser desktop notification) — works only
+   * while a SNARE tab is open somewhere, but needs no external service. */
+  inApp: boolean;
   emailTo: string;
   smtpHost: string;
   smtpPort: number;
@@ -150,3 +153,12 @@ export type ScanEvent =
   | ScanErrorEvent
   | ScanWarningEvent
   | ScanDoneEvent;
+
+/** Broadcast app-wide (not scoped to a scanId) whenever a scan — manual or
+ * scheduled — finds alert-worthy results, so any open SNARE tab can show an
+ * in-app toast / desktop notification regardless of which scan it's viewing. */
+export interface AppAlertEvent {
+  type: "alert";
+  scanId: number;
+  results: DomainResult[];
+}

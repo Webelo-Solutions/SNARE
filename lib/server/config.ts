@@ -44,6 +44,7 @@ const ScheduleConfigSchema = z.object({
 const AlertConfigSchema = z.object({
   enabled: z.boolean().default(false),
   minScore: z.number().int().min(0).max(100).default(50),
+  inApp: z.boolean().default(true),
   emailTo: z.string().default(""),
   smtpHost: z.string().default(""),
   smtpPort: z.number().int().default(587),
