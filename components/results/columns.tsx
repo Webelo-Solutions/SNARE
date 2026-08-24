@@ -6,8 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBadge } from "@/components/score-badge";
 import { ScreenshotCell } from "./screenshot-cell";
-import { TakedownNoticeModal } from "@/components/dialogs/takedown-notice-modal";
-import { RegisterDomainButton } from "@/components/dialogs/register-domain-button";
+import { DomainDetailsModal } from "@/components/dialogs/domain-details-modal";
 import type { DomainResult } from "@/lib/types";
 
 const columnHelper = createColumnHelper<DomainResult>();
@@ -17,7 +16,7 @@ export const columns = [
     header: "Domain",
     cell: (info) => (
       <div className="flex items-center gap-1.5 font-mono text-[13px]">
-        <span>{info.getValue()}</span>
+        <DomainDetailsModal result={info.row.original} />
         {info.row.original.isNew && (
           <Badge className="bg-primary/15 text-primary border-primary/40 text-[10px] px-1.5 py-0">
             NEW
@@ -141,10 +140,6 @@ export const columns = [
       return <div className="flex flex-col text-[13px] leading-tight">{parts}</div>;
     },
   }),
-  columnHelper.accessor("registrar", {
-    header: "Registrar",
-    cell: (info) => <span className="text-[13px]">{info.getValue() ?? "—"}</span>,
-  }),
   columnHelper.accessor("ips", {
     header: "IPs",
     cell: (info) => {
@@ -178,10 +173,6 @@ export const columns = [
       );
     },
   }),
-  columnHelper.accessor("abuseContact", {
-    header: "Abuse Contact",
-    cell: (info) => <span className="text-[13px]">{info.getValue() || "—"}</span>,
-  }),
   columnHelper.display({
     id: "screenshot",
     header: "Screenshot",
@@ -191,18 +182,5 @@ export const columns = [
         onCaptured={info.table.options.meta?.onScreenshotCaptured}
       />
     ),
-  }),
-  columnHelper.display({
-    id: "actions",
-    header: "Actions",
-    cell: (info) => {
-      const result = info.row.original;
-      return (
-        <div className="flex items-center gap-3">
-          <TakedownNoticeModal result={result} />
-          {result.isAvailable && <RegisterDomainButton domain={result.domain} />}
-        </div>
-      );
-    },
   }),
 ];
