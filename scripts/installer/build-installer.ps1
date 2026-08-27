@@ -134,18 +134,42 @@ Write-Host "Portable Node.js OK: $NodeExe"
 # --- 4. Locate NSSM (bundled for the optional in-installer service step) ----
 Write-Step "Locating NSSM (bundled for the optional 'Install as service' step)"
 
-if (-not (Get-Command nssm.exe -ErrorAction SilentlyContinue)) {
+# Same story as makensis below: winget's NSSM package doesn't reliably land
+# on PATH for a freshly-started process, and winget exits non-zero for an
+# already-installed package ("no applicable update found") even though
+# nothing is wrong - so search well-known install/winget locations too, and
+# just re-check afterwards regardless of winget's exit code.
+function Find-Nssm {
+    $cmd = Get-Command nssm.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+
+    $wingetLink = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\nssm.exe"
+    if (Test-Path $wingetLink) { return $wingetLink }
+
+    $wingetPackages = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+    if (Test-Path $wingetPackages) {
+        $found = Get-ChildItem $wingetPackages -Recurse -Filter "nssm.exe" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($found) { return $found.FullName }
+    }
+
+    foreach ($path in @("$env:ProgramFiles\nssm\nssm.exe", "${env:ProgramFiles(x86)}\nssm\nssm.exe")) {
+        if (Test-Path $path) { return $path }
+    }
+    return $null
+}
+
+$nssmPath = Find-Nssm
+if (-not $nssmPath) {
     Write-Host "Installing NSSM via winget..."
     winget install --id NSSM.NSSM --accept-source-agreements --accept-package-agreements
-    if ($LASTEXITCODE -ne 0) {
-        throw "winget install of NSSM failed (exit code $LASTEXITCODE). Install it manually from https://nssm.cc/download and re-run this script."
-    }
     Update-PathFromMachine
+    $nssmPath = Find-Nssm
 }
-$nssmCmd = Get-Command nssm.exe -ErrorAction SilentlyContinue
-if (-not $nssmCmd) {
-    throw "nssm.exe still isn't on PATH after install. Open a new PowerShell window and re-run this script."
+if (-not $nssmPath) {
+    throw "nssm.exe could not be found on PATH or in common winget/install locations after attempting winget install. Install it manually from https://nssm.cc/download and re-run this script."
 }
+$nssmCmd = [PSCustomObject]@{ Source = $nssmPath }
 Write-Host "NSSM OK: $($nssmCmd.Source)"
 
 # --- 5. Assemble the staging tree --------------------------------------------

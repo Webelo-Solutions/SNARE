@@ -38,6 +38,7 @@ ShowUninstDetails show
 VIProductVersion "${PRODUCT_VERSION}.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}.0"
 VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"
 VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Setup"
 VIAddVersionKey "LegalCopyright" "${PRODUCT_PUBLISHER}"
