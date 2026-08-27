@@ -47,6 +47,10 @@ npm run build
 
 This produces the optimized `.next` build that `npm start` serves. Re-run `npm run build` after pulling new code or changing any source file — `npm start` will not pick up source changes on its own.
 
+### Self-contained Windows installer (no npm required on the target host)
+
+For deploying to a Windows host without Node/npm/git installed, `scripts/installer/build-installer.ps1` produces `dist\SNARE-Setup-<version>.exe` — an installer that bundles a portable Node.js runtime, the compiled app, the native `better-sqlite3` binding, and Playwright's Chromium, so it installs and runs fully offline. See [scripts/installer/README.md](scripts/installer/README.md) for how to build and verify it. This is a build-machine tool — you still need Node/npm to *produce* the installer; the resulting `.exe` is what needs neither.
+
 ## Running it
 
 For interactive use during setup or one-off scans:

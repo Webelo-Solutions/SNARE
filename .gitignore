@@ -23,6 +23,9 @@
 # production
 /build
 
+# installer build output (see scripts/installer/build-installer.ps1)
+/dist/
+
 # misc
 .DS_Store
 *.pem
