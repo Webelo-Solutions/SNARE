@@ -15,12 +15,15 @@ const TIER_ORDER: ScoreLabel[] = ["Critical", "High", "Medium", "Low"];
 function buildDigest(results: DomainResult[]): { title: string; description: string } {
   const tierCounts: Record<ScoreLabel, number> = { Critical: 0, High: 0, Medium: 0, Low: 0 };
   let watchedCount = 0;
+  let changedCount = 0;
   for (const r of results) {
     tierCounts[scoreLabel(r.score)]++;
     if (r.isCustomStubMatch) watchedCount++;
+    if (r.stateChanges.length > 0) changedCount++;
   }
   const tierParts = TIER_ORDER.filter((t) => tierCounts[t] > 0).map((t) => `${tierCounts[t]} ${t}`);
   if (watchedCount > 0) tierParts.push(`${watchedCount} watched`);
+  if (changedCount > 0) tierParts.push(`${changedCount} state change${changedCount !== 1 ? "s" : ""}`);
 
   const targets = [...new Set(results.map((r) => r.target))];
   const targetLabel = targets.length === 1 ? targets[0] : `${targets.length} targets`;

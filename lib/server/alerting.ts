@@ -58,6 +58,20 @@ export function testTeams(cfg: AlertConfig): Promise<string | null> {
 // Email
 // ------------------------------------------------------------------ //
 
+/** Shared SMTP transport construction — used both for the alert email below
+ * and for the one-click takedown-notice send path (app/api/takedown/send),
+ * which reuses the same configured SMTP account rather than needing its own. */
+export function buildTransport(
+  cfg: Pick<AlertConfig, "smtpHost" | "smtpPort" | "smtpTls" | "smtpUser" | "smtpPass">
+) {
+  return nodemailer.createTransport({
+    host: cfg.smtpHost,
+    port: cfg.smtpPort,
+    secure: !cfg.smtpTls, // implicit TLS (smtps) when not using STARTTLS
+    auth: cfg.smtpUser && cfg.smtpPass ? { user: cfg.smtpUser, pass: cfg.smtpPass } : undefined,
+  });
+}
+
 async function sendEmail(
   hits: DomainResult[],
   cfg: AlertConfig,
@@ -65,17 +79,12 @@ async function sendEmail(
 ): Promise<string | null> {
   const subject = test
     ? "SNARE — Test notification"
-    : `SNARE Alert — ${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected`;
+    : `SNARE Alert — ${hits.length} domain${hits.length !== 1 ? "s" : ""} require attention`;
 
   const { html, attachments } = buildEmailContent(hits, test);
 
   try {
-    const transport = nodemailer.createTransport({
-      host: cfg.smtpHost,
-      port: cfg.smtpPort,
-      secure: !cfg.smtpTls, // implicit TLS (smtps) when not using STARTTLS
-      auth: cfg.smtpUser && cfg.smtpPass ? { user: cfg.smtpUser, pass: cfg.smtpPass } : undefined,
-    });
+    const transport = buildTransport(cfg);
     await transport.sendMail({
       from: cfg.smtpUser || "snare@localhost",
       to: cfg.emailTo,
@@ -145,6 +154,7 @@ export function buildEmailContent(
 
       const badges = [
         r.isNew ? badge("NEW", "#89b4fa") : "",
+        r.stateChanges.length > 0 ? badge("STATE CHANGE", "#f38ba8") : "",
         r.isCustomStubMatch ? badge("WATCHED", "#fab387") : "",
         r.isAvailable ? badge("AVAILABLE", "#a6e3a1") : "",
         r.parkedService ? badge(`PARKED · ${escapeHtml(r.parkedService)}`, "#6c7086") : "",
@@ -185,6 +195,14 @@ export function buildEmailContent(
           "Score",
           `<span style="color:${color};font-weight:bold;">${r.score} — ${scoreLabel(r.score)}</span>`
         ),
+        ...(r.stateChanges.length > 0
+          ? [
+              fieldRow(
+                "What Changed",
+                `<span style="color:#f38ba8;">${r.stateChanges.map(escapeHtml).join("; ")}</span>`
+              ),
+            ]
+          : []),
         fieldRow("Target", escapeHtml(r.target)),
         fieldRow(
           "Source",
@@ -216,7 +234,7 @@ export function buildEmailContent(
     html: `
       <html><head><meta charset="utf-8"></head><body style="font-family:Arial,sans-serif;background:#12121e;color:#cdd6f4;padding:24px;">
       <h2 style="color:#89b4fa;">SNARE Alert</h2>
-      <p>${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected — ${ts}</p>
+      <p>${hits.length} domain${hits.length !== 1 ? "s" : ""} require attention — ${ts}</p>
       ${cards}
       <p style="color:#6c7086;font-size:12px;margin-top:8px;">
         Sent by SNARE — Domain Surveillance</p>
@@ -239,17 +257,16 @@ async function sendSlack(
   if (test) {
     payload = { text: "SNARE — test notification. Your Slack webhook is configured correctly." };
   } else {
-    const lines = [
-      `*SNARE Alert* — ${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected\n`,
-    ];
+    const lines = [`*SNARE Alert* — ${hits.length} domain${hits.length !== 1 ? "s" : ""} require attention\n`];
     for (const r of hits) {
-      const icon = r.score >= 70 ? ":rotating_light:" : ":warning:";
+      const icon = r.stateChanges.length > 0 || r.score >= 70 ? ":rotating_light:" : ":warning:";
       lines.push(
         `${icon} \`${r.domain}\` → _${r.target}_ ` +
           `| Score: *${r.score}* (${scoreLabel(r.score)}) ` +
           `| ${r.source}` +
           `${r.hasWeb ? " | Web: Yes" : ""}` +
-          `${r.mxRecords.length > 0 ? " | MX: Yes" : ""}`
+          `${r.mxRecords.length > 0 ? " | MX: Yes" : ""}` +
+          `${r.stateChanges.length > 0 ? ` | ⚠ ${r.stateChanges.join("; ")}` : ""}`
       );
     }
     payload = { text: lines.join("\n") };
@@ -294,14 +311,15 @@ async function sendTeams(
       value:
         `Target: ${r.target} | Score: ${r.score} (${scoreLabel(r.score)}) ` +
         `| ${r.source}` +
-        `${r.hasWeb ? " | Web active" : ""}`,
+        `${r.hasWeb ? " | Web active" : ""}` +
+        `${r.stateChanges.length > 0 ? ` | Changed: ${r.stateChanges.join("; ")}` : ""}`,
     }));
     payload = {
       "@type": "MessageCard",
       "@context": "https://schema.org/extensions",
-      summary: `SNARE Alert — ${hits.length} new domains`,
+      summary: `SNARE Alert — ${hits.length} domains`,
       themeColor: "f38ba8",
-      title: `SNARE Alert — ${hits.length} new high-risk domain${hits.length !== 1 ? "s" : ""} detected`,
+      title: `SNARE Alert — ${hits.length} domain${hits.length !== 1 ? "s" : ""} require attention`,
       sections: [{ facts }],
     };
   }

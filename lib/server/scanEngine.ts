@@ -46,6 +46,9 @@ function blankResult(domain: string, source: MatchSource, target: string): Domai
     urlscanUrl: null,
     urlscanMalicious: null,
     ctLogIndex: null,
+    status: "open",
+    stateChanges: [],
+    takedownSentAt: null,
   };
 }
 
@@ -58,6 +61,7 @@ interface WhoisEnrichment {
 class ScanRun {
   private seen = new Set<string>();
   private newResults: DomainResult[] = [];
+  private changedResults: DomainResult[] = [];
   private db = getDb();
 
   constructor(
@@ -70,6 +74,12 @@ class ScanRun {
 
   get results(): DomainResult[] {
     return this.newResults;
+  }
+
+  /** Previously-seen domains whose state changed this scan (e.g. parked →
+   * live) — excludes anything triaged as ignored/false_positive. */
+  get changed(): DomainResult[] {
+    return this.changedResults;
   }
 
   async run(): Promise<void> {
@@ -92,9 +102,20 @@ class ScanRun {
     if (!this.passesPatterns(result.domain, result.target)) return;
     this.seen.add(result.domain);
     result.score = scoring.score(result);
-    const isNew = this.db.saveResult(result, this.scanId);
-    result.isNew = isNew;
-    if (isNew) this.newResults.push(result);
+    const saved = this.db.saveResult(result, this.scanId);
+    result.id = saved.id;
+    result.isNew = saved.isNew;
+    result.status = saved.status;
+    result.stateChanges = saved.stateChanges;
+    if (saved.isNew) {
+      this.newResults.push(result);
+    } else if (
+      saved.stateChanges.length > 0 &&
+      saved.status !== "ignored" &&
+      saved.status !== "false_positive"
+    ) {
+      this.changedResults.push(result);
+    }
     emitScanEvent(this.scanId, { type: "result", result });
   }
 
@@ -366,13 +387,19 @@ export function startScan(targets: string[], config: Config, patterns: Pattern[]
       const latest = loadConfig();
       updateConfig({ schedule: { ...latest.schedule, lastRunAt: new Date().toISOString() } });
 
-      if (latest.alerts.enabled && run.results.length > 0) {
-        const hits = filterAlertHits(run.results, latest.alerts);
+      // New domains and state-changed domains share the same alert
+      // threshold/watched-stub logic in filterAlertHits — a state change is
+      // only alert-worthy if it also clears the usual score bar (which the
+      // change itself typically pushes up anyway, since scoring already
+      // weighs hasWeb/mxRecords).
+      const alertCandidates = [...run.results, ...run.changed];
+      if (latest.alerts.enabled && alertCandidates.length > 0) {
+        const hits = filterAlertHits(alertCandidates, latest.alerts);
         if (latest.alerts.inApp && hits.length > 0) {
           emitAppAlert({ type: "alert", scanId, results: hits });
         }
 
-        const errors = await dispatchAlerts(run.results, latest.alerts);
+        const errors = await dispatchAlerts(alertCandidates, latest.alerts);
         if (errors.length > 0) {
           emitScanEvent(scanId, {
             type: "warning",

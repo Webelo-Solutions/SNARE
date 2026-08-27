@@ -17,23 +17,31 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { columns } from "./columns";
-import type { DomainResult } from "@/lib/types";
+import type { DomainResult, ResultStatus } from "@/lib/types";
 
 export function ResultsTable({ results }: { results: DomainResult[] }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
-  // Screenshots (and, later, takedown state) are captured via row actions
-  // that mutate the server directly — this overlay lets those actions
-  // reflect immediately in the table without the parent's SSE-driven
-  // `results` array knowing about them.
+  // Screenshots and triage status are captured via row actions that mutate
+  // the server directly — this overlay lets those actions reflect
+  // immediately in the table without the parent's SSE-driven `results`
+  // array knowing about them.
   const [screenshotOverrides, setScreenshotOverrides] = useState<Record<string, string>>({});
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, ResultStatus>>({});
+  const [hideTriaged, setHideTriaged] = useState(true);
 
   const data = useMemo(
     () =>
-      results.map((r) =>
-        screenshotOverrides[r.domain] ? { ...r, screenshotPath: screenshotOverrides[r.domain] } : r
-      ),
-    [results, screenshotOverrides]
+      results
+        .map((r) => {
+          const status = statusOverrides[r.domain] ?? r.status;
+          return screenshotOverrides[r.domain] || status !== r.status
+            ? { ...r, screenshotPath: screenshotOverrides[r.domain] ?? r.screenshotPath, status }
+            : r;
+        })
+        .filter((r) => !hideTriaged || (r.status !== "ignored" && r.status !== "false_positive")),
+    [results, screenshotOverrides, statusOverrides, hideTriaged]
   );
 
   const table = useReactTable({
@@ -47,6 +55,8 @@ export function ResultsTable({ results }: { results: DomainResult[] }) {
     meta: {
       onScreenshotCaptured: (domain: string, path: string) =>
         setScreenshotOverrides((prev) => ({ ...prev, [domain]: path })),
+      onStatusChanged: (domain: string, status: ResultStatus) =>
+        setStatusOverrides((prev) => ({ ...prev, [domain]: status })),
     },
   });
 
@@ -59,43 +69,49 @@ export function ResultsTable({ results }: { results: DomainResult[] }) {
   }
 
   return (
-    <div className="min-w-0 flex-1 overflow-auto">
-      <Table>
-        <TableHeader className="sticky top-0 z-10 bg-surface2">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                const sortDir = header.column.getIsSorted();
-                return (
-                  <TableHead
-                    key={header.id}
-                    onClick={header.column.getToggleSortingHandler()}
-                    className="cursor-pointer select-none whitespace-nowrap"
-                  >
-                    <div className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {sortDir === "asc" && <ArrowUp className="size-3" />}
-                      {sortDir === "desc" && <ArrowDown className="size-3" />}
-                      {!sortDir && <ArrowUpDown className="size-3 opacity-30" />}
-                    </div>
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id} className="whitespace-nowrap">
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <label className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 text-xs text-text-dim">
+        <Checkbox checked={hideTriaged} onCheckedChange={(v) => setHideTriaged(v === true)} />
+        Hide ignored / false-positive results
+      </label>
+      <div className="min-w-0 flex-1 overflow-auto">
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-surface2">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  const sortDir = header.column.getIsSorted();
+                  return (
+                    <TableHead
+                      key={header.id}
+                      onClick={header.column.getToggleSortingHandler()}
+                      className="cursor-pointer select-none whitespace-nowrap"
+                    >
+                      <div className="flex items-center gap-1">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {sortDir === "asc" && <ArrowUp className="size-3" />}
+                        {sortDir === "desc" && <ArrowDown className="size-3" />}
+                        {!sortDir && <ArrowUpDown className="size-3 opacity-30" />}
+                      </div>
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id} className="whitespace-nowrap">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

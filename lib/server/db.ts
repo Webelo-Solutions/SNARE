@@ -2,7 +2,8 @@ import "server-only";
 import fs from "node:fs";
 import Database from "better-sqlite3";
 import { DB_PATH, ensureDataDirs } from "./paths";
-import type { AggregateStats, DomainResult, MatchSource, ScanSummary } from "@/lib/types";
+import type { AggregateStats, DomainResult, MatchSource, ResultStatus, ScanSummary } from "@/lib/types";
+import { detectStateChange } from "./stateChange";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS scans (
@@ -37,6 +38,8 @@ CREATE TABLE IF NOT EXISTS results (
     urlscan_url          TEXT,
     urlscan_malicious    INTEGER,
     ct_log_index         TEXT,
+    status               TEXT    DEFAULT 'open',
+    takedown_sent_at     TEXT,
     first_discovered TEXT    NOT NULL,
     last_seen        TEXT    NOT NULL,
     UNIQUE(domain, target)
@@ -69,6 +72,8 @@ interface ResultRow {
   urlscan_url: string | null;
   urlscan_malicious: number | null;
   ct_log_index: string | null;
+  status: string | null;
+  takedown_sent_at: string | null;
   first_discovered: string;
   last_seen: string;
 }
@@ -131,6 +136,12 @@ function rowToDomainResult(row: ResultRow): DomainResult {
     // time, same reasoning as isNew above. A reload of a historical scan
     // can't retroactively know what stubs were configured back then.
     isCustomStubMatch: false,
+    status: (row.status as ResultStatus) || "open",
+    // Not persisted — a state change is an event detected at scan time, not
+    // an ongoing property of the row. A reload of a historical scan has no
+    // "previous state" to diff against.
+    stateChanges: [],
+    takedownSentAt: row.takedown_sent_at || null,
   };
 }
 
@@ -193,6 +204,12 @@ class SnareDatabase {
     if (!hasColumn("ct_log_index")) {
       this.conn.exec("ALTER TABLE results ADD COLUMN ct_log_index TEXT");
     }
+    if (!hasColumn("status")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN status TEXT DEFAULT 'open'");
+    }
+    if (!hasColumn("takedown_sent_at")) {
+      this.conn.exec("ALTER TABLE results ADD COLUMN takedown_sent_at TEXT");
+    }
   }
 
   beginScan(targets: string[]): number {
@@ -211,12 +228,27 @@ class SnareDatabase {
       .run(now(), total, newCount, scanId);
   }
 
-  /** Insert-or-update a result. Returns true the first time this
-   * (domain, target) pair is ever seen — drives "new domain" alerting. */
-  saveResult(result: DomainResult, scanId: number): boolean {
+  /**
+   * Insert-or-update a result. SELECTs the existing row first (if any) —
+   * both to know whether this is a first-ever sighting (driving "new
+   * domain" alerting) and to diff it against the incoming values for
+   * state-change detection (e.g. went from parked to live) before it gets
+   * overwritten. Returns the row's id (needed even for brand-new rows, so
+   * SSE-streamed live results can support triage/takedown actions without
+   * waiting for a page reload) and the triage `status` carried forward from
+   * the existing row, since the UPDATE below never touches that column.
+   */
+  saveResult(
+    result: DomainResult,
+    scanId: number
+  ): { id: number; isNew: boolean; stateChanges: string[]; status: ResultStatus } {
     const ts = now();
-    try {
-      this.conn
+    const existing = this.conn
+      .prepare("SELECT * FROM results WHERE domain=? AND target=?")
+      .get(result.domain, result.target) as ResultRow | undefined;
+
+    if (!existing) {
+      const info = this.conn
         .prepare(
           `INSERT INTO results
             (scan_id, domain, target, source, score, first_seen,
@@ -253,49 +285,59 @@ class SnareDatabase {
           ts,
           ts
         );
-      return true;
-    } catch (err) {
-      if (
-        err instanceof Error &&
-        "code" in err &&
-        (err as { code: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
-      ) {
-        this.conn
-          .prepare(
-            `UPDATE results
-             SET scan_id=?, score=?, registrar=?, ips=?, mx_records=?,
-                 has_web=?, abuse_contact=?, technique=?, parked_service=?,
-                 vt_malicious_count=?, vt_suspicious_count=?,
-                 urlscan_scanned=?, urlscan_source=?, urlscan_url=?, urlscan_malicious=?,
-                 ct_log_index=?,
-                 last_seen=?
-             WHERE domain=? AND target=?`
-          )
-          .run(
-            scanId,
-            result.score,
-            result.registrar,
-            JSON.stringify(result.ips),
-            JSON.stringify(result.mxRecords),
-            result.hasWeb ? 1 : 0,
-            result.abuseContact,
-            result.technique,
-            result.parkedService,
-            result.vtMaliciousCount,
-            result.vtSuspiciousCount,
-            result.urlscanScanned ? 1 : 0,
-            result.urlscanSource,
-            result.urlscanUrl,
-            result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
-            result.ctLogIndex,
-            ts,
-            result.domain,
-            result.target
-          );
-        return false;
-      }
-      throw err;
+      return { id: Number(info.lastInsertRowid), isNew: true, stateChanges: [], status: "open" };
     }
+
+    const stateChanges = detectStateChange(rowToDomainResult(existing), result);
+
+    this.conn
+      .prepare(
+        `UPDATE results
+         SET scan_id=?, score=?, registrar=?, ips=?, mx_records=?,
+             has_web=?, abuse_contact=?, technique=?, parked_service=?,
+             vt_malicious_count=?, vt_suspicious_count=?,
+             urlscan_scanned=?, urlscan_source=?, urlscan_url=?, urlscan_malicious=?,
+             ct_log_index=?,
+             last_seen=?
+         WHERE domain=? AND target=?`
+      )
+      .run(
+        scanId,
+        result.score,
+        result.registrar,
+        JSON.stringify(result.ips),
+        JSON.stringify(result.mxRecords),
+        result.hasWeb ? 1 : 0,
+        result.abuseContact,
+        result.technique,
+        result.parkedService,
+        result.vtMaliciousCount,
+        result.vtSuspiciousCount,
+        result.urlscanScanned ? 1 : 0,
+        result.urlscanSource,
+        result.urlscanUrl,
+        result.urlscanMalicious === null ? null : result.urlscanMalicious ? 1 : 0,
+        result.ctLogIndex,
+        ts,
+        result.domain,
+        result.target
+      );
+
+    return {
+      id: existing.id,
+      isNew: false,
+      stateChanges,
+      status: (existing.status as ResultStatus) || "open",
+    };
+  }
+
+  updateResultStatus(id: number, status: ResultStatus): DomainResult | null {
+    this.conn.prepare("UPDATE results SET status=? WHERE id=?").run(status, id);
+    return this.getResultById(id);
+  }
+
+  markTakedownSent(id: number, sentAt: string): void {
+    this.conn.prepare("UPDATE results SET takedown_sent_at=? WHERE id=?").run(sentAt, id);
   }
 
   /**

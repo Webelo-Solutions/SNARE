@@ -1,4 +1,10 @@
-import type { Config, DomainResult, Pattern, ScanSummary } from "@/lib/types";
+import type { Config, DomainResult, Pattern, ResultStatus, ScanSummary } from "@/lib/types";
+
+export interface AbuseContactInfo {
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -79,7 +85,21 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(result),
-    }).then((r) => json<{ notice: string; abuseContact: unknown }>(r)),
+    }).then((r) => json<{ notice: string; abuseContact: AbuseContactInfo | Record<string, never> }>(r)),
+
+  sendTakedown: (resultId: number | undefined, to: string, notice: string) =>
+    fetch("/api/takedown/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resultId, to, notice }),
+    }).then((r) => json<{ sentAt: string }>(r)),
+
+  updateResultStatus: (id: number, status: ResultStatus) =>
+    fetch(`/api/results/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).then((r) => json<DomainResult>(r)),
 
   requestScreenshot: (domain: string, target: string) =>
     fetch("/api/results/screenshot", {

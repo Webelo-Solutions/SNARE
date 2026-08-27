@@ -16,10 +16,29 @@ export const columns = [
     header: "Domain",
     cell: (info) => (
       <div className="flex items-center gap-1.5 font-mono text-[13px]">
-        <DomainDetailsModal result={info.row.original} />
+        <DomainDetailsModal
+          result={info.row.original}
+          onStatusChanged={info.table.options.meta?.onStatusChanged}
+        />
+        {info.row.original.status !== "open" && (
+          <Badge
+            className="bg-surface2 text-text-dim border-border text-[10px] px-1.5 py-0 uppercase"
+            title="Triage status"
+          >
+            {info.row.original.status.replace("_", " ")}
+          </Badge>
+        )}
         {info.row.original.isNew && (
           <Badge className="bg-primary/15 text-primary border-primary/40 text-[10px] px-1.5 py-0">
             NEW
+          </Badge>
+        )}
+        {info.row.original.stateChanges.length > 0 && (
+          <Badge
+            className="bg-risk-critical/15 text-risk-critical border-risk-critical/40 text-[10px] px-1.5 py-0"
+            title={info.row.original.stateChanges.join("; ")}
+          >
+            STATE CHANGE
           </Badge>
         )}
         {info.row.original.isAvailable && (

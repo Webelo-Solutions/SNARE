@@ -4,6 +4,20 @@ import { levenshtein } from "./scoring";
 
 export { getAbuseContact } from "./rdap";
 
+/**
+ * Splits a generated notice (whose first line is `Subject: ...`, kept
+ * in-body so Copy/Download produce a self-contained email a user can paste
+ * elsewhere) into an actual SMTP subject header + remaining body, for the
+ * one-click "Send via Email" path.
+ */
+export function splitNotice(notice: string): { subject: string; body: string } {
+  const [firstLine, ...rest] = notice.split("\n");
+  const subject = firstLine.startsWith("Subject:")
+    ? firstLine.slice("Subject:".length).trim()
+    : "Abuse Report";
+  return { subject, body: rest.join("\n").replace(/^\n+/, "") };
+}
+
 function today(): string {
   return new Date().toLocaleDateString("en-US", {
     year: "numeric",

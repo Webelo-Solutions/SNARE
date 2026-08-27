@@ -6,6 +6,11 @@
 // full enum is kept for parity with the original.
 export type MatchSource = "CT Logs" | "DNS Permutation" | "WHOIS/NRD" | "Passive DNS";
 
+/** Triage state a user assigns to a result — persists across rescans since
+ * `saveResult`'s UPDATE never touches this column. "open" is the default for
+ * every newly-discovered domain. */
+export type ResultStatus = "open" | "reviewed" | "ignored" | "false_positive";
+
 export interface DomainResult {
   id?: number;
   domain: string;
@@ -51,6 +56,16 @@ export interface DomainResult {
    * "crt.name", or "crt.sh, crt.name" when both independently indexed it) —
    * only meaningful for source === "CT Logs", null otherwise. */
   ctLogIndex: string | null;
+  /** User-assigned triage state. Persisted; survives rescans until changed. */
+  status: ResultStatus;
+  /** Non-empty when this scan detected a meaningful change vs the domain's
+   * previously stored state (e.g. went from parked to live, gained MX
+   * records). Not persisted — computed fresh each scan, same treatment as
+   * isNew/isCustomStubMatch/isAvailable below. */
+  stateChanges: string[];
+  /** ISO timestamp of the last time a takedown notice was emailed for this
+   * domain via the "Send via Email" action, or null if never sent. */
+  takedownSentAt: string | null;
   raw?: unknown;
 }
 
